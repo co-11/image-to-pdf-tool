@@ -1,0 +1,1643 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>画像フォルダ → PDF変換（赤枠・マスク機能強化版）</title>
+  <!-- jsPDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- Cropper.js -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+  <!-- OpenCV.js -->
+  <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady()"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f1f5f9;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      color: #334155;
+      position: relative;
+    }
+
+    /* ユーティリティ */
+    .hidden { display: none !important; }
+
+    /* ヘッダー */
+    header {
+      background: white;
+      padding: 12px 24px;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    h1 { font-size: 18px; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 8px; }
+    .subtitle { font-size: 12px; color: #64748b; margin-left: 12px; }
+
+    /* メインレイアウト */
+    .app-layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* 左側：メインエリア */
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+      background: #f8fafc;
+    }
+
+    .toolbar {
+      padding: 12px 16px;
+      display: flex;
+      gap: 12px;
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+      flex-shrink: 0;
+      align-items: center;
+    }
+
+    /* 画像処理ツールバー */
+    .processing-toolbar {
+      padding: 8px 16px;
+      background: white;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+      z-index: 5;
+    }
+    .proc-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .proc-title {
+      font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;
+      display: flex; align-items: center; gap: 4px;
+      margin-right: 8px;
+    }
+    .proc-buttons {
+      display: flex;
+      gap: 8px;
+    }
+    
+    /* スライダーパネル（トグルで表示） */
+    .slider-panel {
+      padding: 16px 24px;
+      background: #f1f5f9;
+      border-bottom: 1px solid #cbd5e1;
+      flex-shrink: 0;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    .proc-sliders {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 8px 24px;
+    }
+
+    .scroll-area {
+      flex: 1;
+      overflow-y: auto;
+      display: block; 
+    }
+
+    /* 画像グリッド */
+    .preview-grid {
+      width: 100%;
+      padding: 24px;
+      padding-bottom: 60px;
+    }
+
+    /* 画像がある時のスタイル（Grid） */
+    .preview-grid:not(.is-empty) {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 16px;
+      align-content: start; /* 上詰めで配置（引き伸ばし防止） */
+      height: auto; /* コンテンツに応じて伸びる */
+    }
+
+    /* 画像がない時のスタイル（全画面Flex） */
+    .preview-grid.is-empty {
+      display: flex;
+      flex-direction: column;
+      height: 100%; /* 親要素いっぱいに広げる */
+      align-items: center;
+      justify-content: center;
+    }
+
+    .preview-item {
+      position: relative;
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      border: 2px solid transparent;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .preview-item:hover { 
+      border-color: #3b82f6; 
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+      transform: translateY(-2px);
+    }
+    .preview-item.dragging { opacity: 0.5; }
+
+    .preview-item .img-wrapper {
+      aspect-ratio: 1;
+      background: #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+    .preview-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      pointer-events: none;
+    }
+
+    .preview-item .filename {
+      padding: 8px;
+      font-size: 11px;
+      color: #475569;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      background: white;
+      border-top: 1px solid #f1f5f9;
+      text-align: center;
+    }
+    .preview-item .index {
+      position: absolute; top: 6px; left: 6px;
+      background: rgba(15, 23, 42, 0.7); color: white;
+      padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    /* 右側：サイドバー */
+    .sidebar {
+      width: 300px; 
+      background: white;
+      border-left: 1px solid #e2e8f0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+    .sidebar-section {
+      padding: 24px 20px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .sidebar-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 16px;
+      display: flex; align-items: center; gap: 6px;
+    }
+
+    /* ボタン類 */
+    .btn {
+      width: 100%; padding: 10px; border: none; border-radius: 6px;
+      font-size: 14px; font-weight: 500; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: all 0.2s; margin-bottom: 8px;
+    }
+    /* Toolbar用ボタン調整 */
+    .btn-sm {
+        width: auto; padding: 6px 12px; font-size: 12px; margin-bottom: 0;
+    }
+
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-primary:disabled { background: #cbd5e1; cursor: not-allowed; }
+    
+    .btn-secondary { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+    .btn-secondary:hover { background: #e2e8f0; }
+    .btn-secondary.active { background: #e2e8f0; border-color: #cbd5e1; color: #1e293b; }
+    
+    .btn-danger { background: #fee2e2; color: #ef4444; border: 1px solid #fecaca; }
+    .btn-danger:hover { background: #fecaca; }
+
+    .btn-success { background: #10b981; color: white; }
+    .btn-success:hover { background: #059669; }
+    .btn-success:disabled { background: #cbd5e1; cursor: not-allowed; }
+    
+    .btn-outline-success { 
+      background: white; color: #10b981; border: 1px solid #10b981; 
+    }
+    .btn-outline-success:hover { background: #ecfdf5; }
+
+    .btn-purple { background: #8b5cf6; color: white; }
+    .btn-purple:hover { background: #7c3aed; }
+    .btn-purple:disabled { background: #cbd5e1; cursor: not-allowed; }
+
+    .btn-red-outline { 
+      background: white; color: #ef4444; border: 1px solid #ef4444; 
+    }
+    .btn-red-outline:hover { background: #fef2f2; }
+    .btn-red-outline:disabled { border-color:#cbd5e1; color:#cbd5e1; background:white; cursor:not-allowed; }
+
+    /* 設定フォーム */
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 12px; color: #64748b; margin-bottom: 4px; }
+    .form-control { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 13px; }
+
+    /* デュアルスライダー */
+    .dual-slider-container { margin-top: 0; margin-bottom: 4px; }
+    .dual-slider { position: relative; height: 24px; margin-top: 4px; margin-bottom: 0px; }
+    .slider-track {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      height: 6px; width: 100%; background: #e2e8f0; border-radius: 3px;
+    }
+    .slider-range {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      height: 6px; background: #3b82f6; z-index: 1; border-radius: 3px;
+    }
+    .range-input {
+      position: absolute; pointer-events: none; -webkit-appearance: none; z-index: 2;
+      height: 24px; width: 100%; opacity: 0; cursor: pointer; margin: 0;
+    }
+    .range-input::-webkit-slider-thumb {
+      pointer-events: auto; -webkit-appearance: none; width: 16px; height: 16px;
+      border-radius: 50%; background: white; border: 2px solid #3b82f6; cursor: ew-resize;
+    }
+    .thumb {
+      position: absolute; top: 50%; transform: translate(-50%, -50%);
+      width: 12px; height: 12px; background: white;
+      border: 2px solid #3b82f6; border-radius: 50%; z-index: 3;
+      pointer-events: none; box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    }
+    .slider-value {
+      font-size: 11px; font-weight: 500; color: #475569; font-family: monospace;
+      display: flex; justify-content: space-between; margin-bottom: 0px;
+    }
+
+    /* PDFプレビュー */
+    .pdf-preview-box {
+      background: #e2e8f0; border-radius: 6px; padding: 12px;
+      display: flex; align-items: center; justify-content: center; min-height: 200px;
+    }
+    .pdf-page-preview { background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: all 0.2s; }
+    .pdf-page-preview.portrait { width: 120px; height: 170px; }
+    .pdf-page-preview.landscape { width: 170px; height: 120px; }
+    .pdf-grid-preview { display: grid; width: 100%; height: 100%; padding: 4px; gap: 2px; }
+    .pdf-cell-preview { background: #f8fafc; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+    .pdf-cell-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+    /* ステータスバー */
+    .status-bar {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: #1e293b; color: white; padding: 10px 20px;
+      border-radius: 30px; font-size: 13px; font-weight: 500;
+      display: flex; align-items: center; gap: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 100;
+      opacity: 0; pointer-events: none; transition: opacity 0.3s;
+    }
+    .status-bar.show { opacity: 1; }
+    .spinner {
+      width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Empty State */
+    .empty-state {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: #94a3b8; width: 100%; height: 100%; grid-column: 1 / -1;
+    }
+    .drop-message {
+      border: 2px dashed #cbd5e1; border-radius: 12px; padding: 0;
+      text-align: center; background: #f8fafc; transition: all 0.2s; cursor: pointer;
+      width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 300px;
+    }
+    .drop-message:hover { border-color: #3b82f6; background: #eff6ff; }
+    
+    /* 全画面ドラッグオーバーレイ */
+    .drop-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(59, 130, 246, 0.1); border: 4px solid #3b82f6;
+      z-index: 9999; display: none; pointer-events: none;
+      justify-content: center; align-items: center;
+    }
+    .drop-overlay::after {
+      content: 'ファイルをここにドロップ';
+      font-size: 24px; font-weight: bold; color: #3b82f6;
+      background: white; padding: 20px 40px; border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(59, 130, 246, 0.2);
+    }
+    body.drag-over .drop-overlay { display: flex; }
+
+    /* モーダル類 */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7); z-index: 200; display: none;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-content {
+      background: white; width: 95%; max-width: 900px; max-height: 90vh;
+      border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;
+    }
+    .modal-body { 
+      flex: 1; background: #0f172a; position: relative; overflow: hidden; 
+      display: flex; justify-content: center; align-items: center;
+      min-height: 400px;
+    }
+    /* Cropper.js初期化用の画像スタイル */
+    .modal-body img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .modal-body img.cropper-target { display: block; max-width: 100%; max-height: 100%; object-fit: unset; }
+
+    
+    /* 赤枠エディタ用 */
+    #redBoxCanvas {
+      position: absolute; top: 0; left: 0; cursor: crosshair;
+    }
+    .pick-cursor { cursor: crosshair; }
+    .modal-instruction {
+        position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+        background: rgba(0,0,0,0.7); color: white; padding: 8px 16px;
+        border-radius: 20px; z-index: 10; pointer-events: none; font-size: 14px;
+        white-space: nowrap;
+    }
+    
+    /* 手動編集パネル（モーダル内） */
+    .manual-controls {
+      display: flex; gap: 8px; align-items: center; padding: 8px 16px; 
+      background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 13px;
+      flex-wrap: wrap;
+    }
+    .manual-input-group { display: flex; align-items: center; gap: 4px; }
+    .manual-input { width: 60px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px; }
+    .toggle-switch { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  </style>
+</head>
+<body>
+
+<!-- ドラッグ用オーバーレイ -->
+<div class="drop-overlay"></div>
+
+<header>
+  <h1><i data-lucide="file-check"></i> 画像PDF結合ツール</h1>
+  <span class="subtitle">自動黒板トリミング機能付き</span>
+</header>
+
+<div class="app-layout">
+  <!-- 左側：メインコンテンツ -->
+  <main class="main-content">
+    <div class="toolbar">
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('folderInput').click()">
+        <i data-lucide="folder-open" size="16"></i> フォルダを開く
+      </button>
+      <input type="file" id="folderInput" webkitdirectory multiple accept="image/*" style="display:none">
+      
+      <button class="btn btn-secondary btn-sm" onclick="clearAll()">
+        <i data-lucide="trash-2" size="16"></i> 全削除
+      </button>
+      
+      <div style="flex:1"></div>
+      <span style="font-size:13px; color:#64748b;" id="countDisplay">0 枚の画像</span>
+    </div>
+
+    <!-- 画像処理ツールバー (サイドバーから移動) -->
+    <div class="processing-toolbar">
+      <div class="proc-group">
+        <div class="proc-title"><i data-lucide="scissors" size="14"></i> トリミング・加工</div>
+        <div class="proc-buttons">
+          <button id="pickColorBtn" class="btn btn-purple btn-sm" disabled title="画像から色を取得">
+            <i data-lucide="pipette" size="14"></i> スポイト
+          </button>
+          <button id="redBoxBtn" class="btn btn-red-outline btn-sm" disabled title="赤枠またはマスクを一括設定">
+            <i data-lucide="square" size="14"></i> 枠/マスク
+          </button>
+          <button id="autoCropBtn" class="btn btn-outline-success btn-sm" disabled title="現在のスライダー設定で再処理">
+            <i data-lucide="refresh-cw" size="14"></i> 適用
+          </button>
+          <button id="resetProcBtn" class="btn btn-secondary btn-sm" disabled onclick="resetAllProcessing()" title="すべての処理をリセット">
+            <i data-lucide="rotate-ccw" size="14"></i> リセット
+          </button>
+        </div>
+      </div>
+      
+      <!-- スライダー表示切替ボタン -->
+      <button id="toggleSlidersBtn" class="btn btn-secondary btn-sm" title="トリミング感度設定を表示">
+        <i data-lucide="sliders-horizontal" size="14"></i> 感度調整
+      </button>
+    </div>
+
+    <!-- スライダーパネル（初期状態はhidden） -->
+    <div id="sliderPanel" class="slider-panel hidden">
+      <div class="proc-sliders">
+        <!-- Hue -->
+        <div class="dual-slider-container">
+          <div class="slider-value"><span>色相(H)</span> <span id="val-h">35 - 90</span></div>
+          <div class="dual-slider" id="slider-h">
+            <div class="slider-track"></div><div class="slider-range"></div>
+            <div class="thumb thumb-min"></div><div class="thumb thumb-max"></div>
+            <input type="range" class="range-input input-min" min="0" max="180" value="35">
+            <input type="range" class="range-input input-max" min="0" max="180" value="90">
+          </div>
+        </div>
+        <!-- Sat -->
+        <div class="dual-slider-container">
+          <div class="slider-value"><span>彩度(S)</span> <span id="val-s">40 - 255</span></div>
+          <div class="dual-slider" id="slider-s">
+            <div class="slider-track"></div><div class="slider-range"></div>
+            <div class="thumb thumb-min"></div><div class="thumb thumb-max"></div>
+            <input type="range" class="range-input input-min" min="0" max="255" value="40">
+            <input type="range" class="range-input input-max" min="0" max="255" value="255">
+          </div>
+        </div>
+        <!-- Val -->
+        <div class="dual-slider-container">
+          <div class="slider-value"><span>明度(V)</span> <span id="val-v">40 - 255</span></div>
+          <div class="dual-slider" id="slider-v">
+            <div class="slider-track"></div><div class="slider-range"></div>
+            <div class="thumb thumb-min"></div><div class="thumb thumb-max"></div>
+            <input type="range" class="range-input input-min" min="0" max="255" value="40">
+            <input type="range" class="range-input input-max" min="0" max="255" value="255">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="scroll-area">
+      <div id="previewGrid" class="preview-grid is-empty"> <!-- Default to is-empty -->
+        <div class="empty-state">
+          <div class="drop-message" onclick="document.getElementById('folderInput').click()">
+            <i data-lucide="image-plus" size="64" style="margin-bottom:16px; color:#cbd5e1"></i>
+            <p style="font-size: 16px; font-weight: 500; color: #64748b;">
+              フォルダごとここにドロップ<br>
+              <span style="font-size: 13px; font-weight: 400; color: #94a3b8;">またはクリックして選択</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 右側：サイドバー -->
+  <aside class="sidebar">
+    
+    <!-- PDF作成アクション -->
+    <div class="sidebar-section">
+      <div class="sidebar-title"><i data-lucide="file-output"></i> 出力アクション</div>
+      <button id="generateBtn" class="btn btn-primary" disabled>
+        <i data-lucide="download"></i> PDFを作成して保存
+      </button>
+    </div>
+
+    <!-- PDFレイアウト設定 -->
+    <div class="sidebar-section">
+      <div class="sidebar-title"><i data-lucide="settings-2"></i> PDFレイアウト</div>
+      <div class="form-group">
+        <label>用紙サイズ</label>
+        <select id="pageSize" class="form-control">
+          <option value="a4">A4</option><option value="a3">A3</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>向き</label>
+        <select id="orientation" class="form-control">
+          <option value="portrait">縦 (Portrait)</option><option value="landscape">横 (Landscape)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>1ページあたりの枚数</label>
+        <select id="imagesPerPage" class="form-control">
+          <option value="1">1枚</option><option value="2">2枚</option><option value="4" selected>4枚</option><option value="6">6枚</option><option value="9">9枚</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>余白 (mm)</label>
+        <input type="number" id="margin" value="10" min="0" max="50" class="form-control">
+      </div>
+    </div>
+
+    <!-- PDFプレビュー -->
+    <div class="sidebar-section" style="border-bottom:none;">
+      <div class="sidebar-title"><i data-lucide="eye"></i> レイアウト確認</div>
+      <div class="pdf-preview-box">
+        <div id="pdfPage" class="pdf-page-preview portrait"></div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- ステータスバー -->
+<div id="statusBar" class="status-bar">
+  <div class="spinner"></div><span id="statusText">処理中...</span>
+</div>
+
+<!-- 画像プレビュー＆操作モーダル -->
+<div class="modal-overlay" id="previewModal">
+  <div class="modal-content" style="max-width: 800px; max-height: 90vh;">
+    <div style="padding:12px 16px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+      <h3 style="font-size:16px; margin:0;" id="previewModalTitle">画像プレビュー</h3>
+      <button onclick="closeModal('previewModal')" style="background:none; border:none; font-size:20px; cursor:pointer;">&times;</button>
+    </div>
+    <div class="modal-body" style="background: #0f172a; display: flex; align-items: center; justify-content: center;">
+      <img id="previewModalImage" src="" alt="プレビュー" style="max-width: 100%; max-height: 60vh; object-fit: contain;">
+    </div>
+    <div style="padding:16px; border-top:1px solid #e2e8f0; display:flex; justify-content: space-between; align-items: center; background: #f8fafc;">
+      <div>
+        <button class="btn btn-danger" style="width: auto; padding: 8px 16px; font-size: 13px;" onclick="removeImageFromPreview()">
+          <i data-lucide="trash-2" size="16"></i> 削除
+        </button>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button id="previewUndoBtn" class="btn btn-secondary" style="width: auto; padding: 8px 16px; font-size: 13px;" onclick="undoEditFromPreview()">
+          <i data-lucide="rotate-ccw" size="16"></i> 元に戻す
+        </button>
+        <button class="btn btn-primary" style="width: auto; padding: 8px 16px; font-size: 13px;" onclick="openManualCropFromPreview()">
+          <i data-lucide="scissors" size="16"></i> 手動トリミング
+        </button>
+        <button class="btn btn-secondary" style="width: auto; padding: 8px 16px; font-size: 13px;" onclick="closeModal('previewModal')">
+          閉じる
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- トリミング編集モーダル -->
+<div class="modal-overlay" id="cropModal">
+  <div class="modal-content">
+    <div style="padding:16px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between;">
+      <h3 style="font-size:16px; margin:0;">手動トリミング</h3>
+      <button onclick="closeModal('cropModal')" style="background:none; border:none; font-size:20px; cursor:pointer;">&times;</button>
+    </div>
+    <div class="modal-body">
+      <!-- Cropperターゲットには専用のクラスを付与 -->
+      <img id="cropTarget" src="" alt="" class="cropper-target">
+    </div>
+    <div style="padding:16px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:12px;">
+      <button class="btn btn-secondary" style="width:auto;" onclick="closeModal('cropModal')">キャンセル</button>
+      <button class="btn btn-primary" style="width:auto;" onclick="applyManualCrop()">適用</button>
+    </div>
+  </div>
+</div>
+
+<!-- スポイト用モーダル -->
+<div class="modal-overlay" id="pickModal">
+  <div class="modal-content">
+    <div style="padding:16px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between;">
+      <h3 style="font-size:16px; margin:0;">🎨 黒板の色を選択</h3>
+    </div>
+    <div class="modal-body">
+      <div class="modal-instruction">黒板の部分をクリックしてください</div>
+      <div class="img-container pick-cursor" style="height:100%; width:100%; display:flex; align-items:center; justify-content:center;">
+        <img id="pickImage" src="" alt="色選択">
+      </div>
+    </div>
+    <div style="padding:16px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:12px;">
+      <button class="btn btn-secondary" onclick="closePickModalAndRun(false)">スキップ（デフォルト設定で実行）</button>
+    </div>
+  </div>
+</div>
+
+<!-- 赤枠編集用モーダル（機能拡張版） -->
+<div class="modal-overlay" id="redBoxModal">
+  <div class="modal-content" style="max-width:1000px; height:90vh;">
+    <div style="padding:16px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+      <h3 style="font-size:16px; margin:0;">🔴 枠の一括追加設定（1枚目で指定）</h3>
+      <button class="btn btn-secondary" style="width:auto; padding:4px 8px; font-size:12px;" onclick="clearRedBoxes()">
+        <i data-lucide="trash"></i> 枠を全消去
+      </button>
+    </div>
+    
+    <!-- 手動編集ツールバー -->
+    <div class="manual-controls">
+      <div style="margin-right:16px; display:flex; gap:12px; align-items:center;">
+        <label class="toggle-switch" title="枠外を色で塗りつぶします">
+          <input type="checkbox" id="maskModeCheck" checked> <!-- Default Checked -->
+          <span>枠外を塗りつぶす (マスク)</span>
+        </label>
+        <div style="display:flex; align-items:center; gap:4px;">
+           <span>色:</span>
+           <input type="color" id="maskColorInput" value="#ffffff" style="border:none; width:24px; height:24px; cursor:pointer;">
+        </div>
+      </div>
+      <div style="width:1px; height:20px; background:#e2e8f0; margin:0 8px;"></div>
+      <div class="manual-input-group">
+        <span>X:</span><input type="number" id="rbX" class="manual-input" min="0">
+        <span>Y:</span><input type="number" id="rbY" class="manual-input" min="0">
+        <span>W:</span><input type="number" id="rbW" class="manual-input" min="0">
+        <span>H:</span><input type="number" id="rbH" class="manual-input" min="0">
+        <button onclick="updateRedBoxFromInputs()" class="btn btn-secondary" style="width:auto; padding:4px 8px; margin:0 0 0 4px; font-size:12px;">更新</button>
+      </div>
+    </div>
+
+    <div class="modal-body" id="redBoxBody" style="background:#333; overflow:hidden;">
+      <div class="modal-instruction">ドラッグして枠を追加 (Ctrl+Zで戻る)</div>
+      <!-- 画像とCanvasを重ねるコンテナ -->
+      <div style="position:relative; display:inline-block;" id="redBoxContainer">
+        <img id="redBoxTargetImage" style="display:block; max-width:100%; max-height:80vh; pointer-events:none;">
+        <canvas id="redBoxCanvas" style="position:absolute; top:0; left:0;"></canvas>
+      </div>
+    </div>
+    <div style="padding:16px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:12px;">
+      <button class="btn btn-secondary" style="width:auto;" onclick="closeModal('redBoxModal')">キャンセル</button>
+      <button class="btn btn-primary" style="width:auto;" onclick="applyRedBoxesToAll()">全画像に適用</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 初期化
+  lucide.createIcons();
+  
+  // 状態管理
+  let images = [];
+  let cropper = null;
+  let currentEditIndex = null;
+  let currentPreviewIndex = null; // プレビュー中の画像インデックス
+  let isOpenCvReady = false;
+  
+  // 赤枠・マスク設定
+  let redBoxes = []; // {x, y, w, h} (relative 0-1)
+  let redBoxConfig = {
+    isMaskMode: true, // Default to true
+    maskColor: '#ffffff'
+  };
+
+  // 要素取得
+  const els = {
+    folderInput: document.getElementById('folderInput'),
+    previewGrid: document.getElementById('previewGrid'),
+    generateBtn: document.getElementById('generateBtn'),
+    autoCropBtn: document.getElementById('autoCropBtn'),
+    pickColorBtn: document.getElementById('pickColorBtn'),
+    redBoxBtn: document.getElementById('redBoxBtn'),
+    resetProcBtn: document.getElementById('resetProcBtn'),
+    countDisplay: document.getElementById('countDisplay'),
+    statusBar: document.getElementById('statusBar'),
+    statusText: document.getElementById('statusText'),
+    pdfPage: document.getElementById('pdfPage'),
+    cropModal: document.getElementById('cropModal'),
+    cropTarget: document.getElementById('cropTarget'),
+    pickModal: document.getElementById('pickModal'),
+    pickImage: document.getElementById('pickImage'),
+    redBoxModal: document.getElementById('redBoxModal'),
+    redBoxTargetImage: document.getElementById('redBoxTargetImage'),
+    redBoxCanvas: document.getElementById('redBoxCanvas'),
+    
+    // スライダーパネル周り
+    toggleSlidersBtn: document.getElementById('toggleSlidersBtn'),
+    sliderPanel: document.getElementById('sliderPanel'),
+
+    // プレビューモーダル用
+    previewModal: document.getElementById('previewModal'),
+    previewModalTitle: document.getElementById('previewModalTitle'),
+    previewModalImage: document.getElementById('previewModalImage'),
+    previewUndoBtn: document.getElementById('previewUndoBtn'),
+
+    // 赤枠ツールバー
+    maskModeCheck: document.getElementById('maskModeCheck'),
+    maskColorInput: document.getElementById('maskColorInput'),
+    rbX: document.getElementById('rbX'),
+    rbY: document.getElementById('rbY'),
+    rbW: document.getElementById('rbW'),
+    rbH: document.getElementById('rbH'),
+    
+    // 設定
+    pageSize: document.getElementById('pageSize'),
+    orientation: document.getElementById('orientation'),
+    imagesPerPage: document.getElementById('imagesPerPage'),
+    margin: document.getElementById('margin'),
+  };
+
+  // OpenCV読み込み完了コールバック
+  function onOpenCvReady() {
+    isOpenCvReady = true;
+    console.log("OpenCV Ready");
+    updateButtonStates();
+  }
+
+  function updateButtonStates() {
+    const hasImages = images.length > 0;
+    const ready = isOpenCvReady && hasImages;
+    els.autoCropBtn.disabled = !ready;
+    els.pickColorBtn.disabled = !ready;
+    els.redBoxBtn.disabled = !hasImages; // 画像があれば枠設定は可能
+    els.generateBtn.disabled = !hasImages;
+    els.resetProcBtn.disabled = !hasImages;
+  }
+
+  // スライダーのトグル機能
+  els.toggleSlidersBtn.onclick = () => {
+    els.sliderPanel.classList.toggle('hidden');
+    els.toggleSlidersBtn.classList.toggle('active');
+  };
+
+  // --- デュアルスライダーのセットアップ ---
+  function setupDualSlider(id, minVal, maxVal, maxLimit) {
+    const container = document.getElementById(id);
+    const range = container.querySelector('.slider-range');
+    const thumbMin = container.querySelector('.thumb-min');
+    const thumbMax = container.querySelector('.thumb-max');
+    const inputMin = container.querySelector('.input-min');
+    const inputMax = container.querySelector('.input-max');
+    const display = document.getElementById(id.replace('slider', 'val'));
+
+    function update() {
+      let v1 = parseInt(inputMin.value);
+      let v2 = parseInt(inputMax.value);
+      if (v1 > v2) { [v1, v2] = [v2, v1]; } 
+      const p1 = (v1 / maxLimit) * 100;
+      const p2 = (v2 / maxLimit) * 100;
+      range.style.left = p1 + '%';
+      range.style.width = (p2 - p1) + '%';
+      thumbMin.style.left = p1 + '%';
+      thumbMax.style.left = p2 + '%';
+      display.textContent = `${v1} - ${v2}`;
+    }
+    inputMin.addEventListener('input', () => {
+      if(parseInt(inputMin.value) > parseInt(inputMax.value)) inputMin.value = inputMax.value;
+      update();
+    });
+    inputMax.addEventListener('input', () => {
+      if(parseInt(inputMax.value) < parseInt(inputMin.value)) inputMax.value = inputMin.value;
+      update();
+    });
+    container.setValues = (v1, v2) => {
+      inputMin.value = v1; inputMax.value = v2; update();
+    };
+    update();
+  }
+
+  setupDualSlider('slider-h', 35, 90, 180);
+  setupDualSlider('slider-s', 40, 255, 255);
+  setupDualSlider('slider-v', 40, 255, 255);
+
+  function getHSVSettings() {
+    const getVal = (id) => {
+      const c = document.getElementById(id);
+      return [parseInt(c.querySelector('.input-min').value), parseInt(c.querySelector('.input-max').value)];
+    }
+    const h = getVal('slider-h');
+    const s = getVal('slider-s');
+    const v = getVal('slider-v');
+    return { lower: [h[0], s[0], v[0], 0], upper: [h[1], s[1], v[1], 0] };
+  }
+
+  // --- イベントリスナー ---
+  els.folderInput.addEventListener('change', async (e) => {
+    await handleFiles(e.target.files);
+    e.target.value = '';
+  });
+
+  // 全画面ドラッグ＆ドロップ
+  const dragEvents = ['dragenter', 'dragover', 'dragleave', 'drop'];
+  dragEvents.forEach(eventName => document.body.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false));
+  document.body.addEventListener('dragenter', () => document.body.classList.add('drag-over'));
+  document.body.addEventListener('dragover', () => document.body.classList.add('drag-over'));
+  document.body.addEventListener('dragleave', (e) => { if (e.relatedTarget === null) document.body.classList.remove('drag-over'); });
+  document.body.addEventListener('drop', async (e) => {
+    document.body.classList.remove('drag-over');
+    const items = e.dataTransfer.items;
+    let fileList = [];
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+        if (item) { await scanFiles(item, fileList); } 
+        else { const file = items[i].getAsFile(); if (file && file.type.startsWith('image/')) fileList.push(file); }
+      }
+    } else {
+      fileList = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/'));
+    }
+    await handleFiles(fileList);
+  });
+
+  async function scanFiles(item, fileList) {
+    if (item.isFile) {
+      return new Promise(resolve => item.file(file => {
+        if (file.type.startsWith('image/') || /\.(jpe?g|png|gif|bmp|webp)$/i.test(file.name)) fileList.push(file);
+        resolve();
+      }));
+    } else if (item.isDirectory) {
+      const dirReader = item.createReader();
+      const entries = await readAllEntries(dirReader);
+      for (const entry of entries) await scanFiles(entry, fileList);
+    }
+  }
+  function readAllEntries(dirReader) {
+    return new Promise(resolve => {
+      let entries = [];
+      const read = () => {
+        dirReader.readEntries(result => {
+          if (!result.length) resolve(entries);
+          else { entries = entries.concat(result); read(); }
+        });
+      };
+      read();
+    });
+  }
+
+  ['pageSize', 'orientation', 'imagesPerPage', 'margin'].forEach(id => els[id].addEventListener('change', updatePdfPreview));
+
+  els.autoCropBtn.onclick = runAutoCropForce;
+  els.pickColorBtn.onclick = () => { if(images.length > 0) openPickModal(images[0]); };
+  els.generateBtn.onclick = generatePDF;
+  els.pickImage.onclick = (e) => handleColorPick(e.target, e.offsetX, e.offsetY, true);
+  els.redBoxBtn.onclick = openRedBoxEditor;
+
+  // 赤枠設定用イベント
+  els.maskModeCheck.addEventListener('change', (e) => {
+    redBoxConfig.isMaskMode = e.target.checked;
+    drawRedBoxesOnCanvas();
+  });
+  els.maskColorInput.addEventListener('input', (e) => {
+    redBoxConfig.maskColor = e.target.value;
+    if(redBoxConfig.isMaskMode) drawRedBoxesOnCanvas();
+  });
+
+
+  // キーイベント（Ctrl+Z）
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'z') {
+      if (els.redBoxModal.classList.contains('active')) {
+        e.preventDefault();
+        undoLastRedBox();
+      }
+    }
+  });
+
+  // モーダル外側（背景）クリックで閉じる
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        closeModal(overlay.id);
+      }
+    });
+  });
+
+  function undoLastRedBox() {
+    if (redBoxes.length > 0) {
+      redBoxes.pop();
+      drawRedBoxesOnCanvas();
+      updateInputsFromLastBox();
+    }
+  }
+
+  // --- メインロジック ---
+  async function handleFiles(fileList) {
+    if (fileList.length === 0) return;
+    showStatus(true, '画像を読み込み中...');
+    
+    const newFiles = Array.from(fileList).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    for (const file of newFiles) {
+      const dataUrl = await readFile(file);
+      images.push({
+        file, name: file.name,
+        dataUrl: dataUrl,
+        croppedUrl: dataUrl, // トリミング後のベース画像
+        originalUrl: dataUrl, // 完全なオリジナル
+        isEdited: false,
+        detectRect: null // 検出された矩形
+      });
+    }
+    renderGrid();
+    updatePdfPreview();
+    updateButtonStates();
+    
+    if (isOpenCvReady) {
+      if (images.length > 0) openPickModal(images[0]);
+      else showStatus(false);
+    } else {
+      showStatus(true, '画像処理エンジン準備中...');
+    }
+  }
+
+  function readFile(file) {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function renderGrid() {
+    els.countDisplay.textContent = `${images.length} 枚の画像`;
+    const grid = els.previewGrid;
+    
+    // 画像がない場合：全画面Flex表示に切り替え
+    if (images.length === 0) {
+      grid.classList.add('is-empty');
+      grid.innerHTML = `
+        <div class="empty-state">
+          <div class="drop-message" onclick="document.getElementById('folderInput').click()">
+            <i data-lucide="image-plus" size="64" style="margin-bottom:16px; color:#cbd5e1"></i>
+            <p style="font-size: 16px; font-weight: 500; color: #64748b;">フォルダごとここにドロップ<br><span style="font-size: 13px; font-weight: 400; color: #94a3b8;">またはクリックして選択</span></p>
+          </div>
+        </div>`;
+      updateButtonStates();
+      lucide.createIcons();
+      return;
+    }
+    
+    // 画像がある場合：Grid表示に切り替え
+    grid.classList.remove('is-empty');
+    updateButtonStates();
+    
+    // グリッド生成（クリックでプレビューを開く）
+    grid.innerHTML = images.map((img, i) => `
+      <div class="preview-item" draggable="true" data-index="${i}" onclick="openPreviewModal(${i})">
+        <div class="index">${i+1}</div>
+        <div class="img-wrapper"><img src="${img.dataUrl}" data-index="${i}"></div>
+        <div class="filename">${img.name}</div>
+      </div>
+    `).join('');
+    lucide.createIcons();
+    setupDragAndDrop();
+  }
+
+  // --- プレビューモーダル機能 ---
+  window.openPreviewModal = (index) => {
+    currentPreviewIndex = index;
+    const img = images[index];
+    els.previewModalTitle.textContent = img.name;
+    els.previewModalImage.src = img.dataUrl;
+    
+    // 「元に戻す」ボタンの表示制御
+    els.previewUndoBtn.style.display = img.isEdited ? 'inline-flex' : 'none';
+    
+    els.previewModal.classList.add('active');
+  };
+
+  window.openManualCropFromPreview = () => {
+    // プレビューモーダルを閉じてからトリミングモーダルを開く
+    els.previewModal.classList.remove('active');
+    setTimeout(() => {
+        openManualCrop(currentPreviewIndex);
+    }, 100);
+  };
+  
+  window.undoEditFromPreview = async () => {
+     await undoEdit(currentPreviewIndex);
+     // プレビュー画像を更新
+     els.previewModalImage.src = images[currentPreviewIndex].dataUrl;
+     els.previewUndoBtn.style.display = 'none';
+  };
+
+  window.removeImageFromPreview = () => {
+      // 削除実行
+      removeImage(currentPreviewIndex);
+      // モーダルを閉じる
+      els.previewModal.classList.remove('active');
+  };
+
+
+  // --- 色指定・自動クロップ ---
+  function openPickModal(image) {
+      els.pickImage.src = image.originalUrl;
+      els.pickModal.classList.add('active');
+      showStatus(false);
+  }
+  function closePickModalAndRun(shouldRunCrop) {
+      els.pickModal.classList.remove('active');
+      showStatus(true, '自動トリミング中...');
+      setTimeout(() => { runAutoCrop(true); }, 100);
+  }
+
+  async function runAutoCrop(skipEdited = true) {
+    if (!isOpenCvReady) return;
+    const settings = getHSVSettings();
+    for (let i = 0; i < images.length; i++) {
+      if (skipEdited && images[i].isEdited) continue;
+      const resultObj = await detectGreenBoard(images[i].originalUrl, settings);
+      if (resultObj) {
+        images[i].croppedUrl = resultObj.url; 
+        images[i].dataUrl = resultObj.url;
+        images[i].detectRect = resultObj.rect; // 矩形を保存
+        images[i].isEdited = true;
+      }
+    }
+    // 赤枠設定がある場合は適用
+    if(redBoxes.length > 0) {
+      await applyRedBoxesInternal();
+    }
+    
+    renderGrid();
+    updatePdfPreview();
+    showStatus(false);
+    
+    // トリミング完了後、自動で赤枠エディタを開く
+    if(images.length > 0 && !els.redBoxModal.classList.contains('active')) {
+       openRedBoxEditor();
+    }
+  }
+
+  async function runAutoCropForce() {
+    if (!isOpenCvReady) return;
+    showStatus(true, '全画像を再処理中...');
+    await new Promise(r => setTimeout(r, 50));
+    images.forEach(img => {
+      img.dataUrl = img.originalUrl;
+      img.croppedUrl = img.originalUrl;
+      img.detectRect = null;
+      img.isEdited = false;
+    });
+    await runAutoCrop(false); 
+  }
+
+  function detectGreenBoard(url, hsvRange) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const cv = window.cv;
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width; canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          let src = cv.imread(canvas);
+          let hsv = new cv.Mat();
+          cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
+          cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
+          let low = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), hsvRange.lower);
+          let high = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), hsvRange.upper);
+          let mask = new cv.Mat();
+          cv.inRange(hsv, low, high, mask);
+          let kernel = cv.Mat.ones(5, 5, cv.CV_8U);
+          cv.morphologyEx(mask, mask, cv.MORPH_OPEN, kernel);
+          cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, kernel);
+          let contours = new cv.MatVector();
+          let hierarchy = new cv.Mat();
+          cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+          let bestRect = null; let maxScore = 0;
+          const minArea = (src.cols * src.rows) * 0.01;
+          for (let i = 0; i < contours.size(); ++i) {
+            let cnt = contours.get(i);
+            let area = cv.contourArea(cnt);
+            if (area < minArea) continue;
+            let rect = cv.boundingRect(cnt);
+            if (area > maxScore) { maxScore = area; bestRect = rect; }
+          }
+          let res = null;
+          if (bestRect) {
+            const cCanvas = document.createElement('canvas');
+            cCanvas.width = bestRect.width; cCanvas.height = bestRect.height;
+            const cCtx = cCanvas.getContext('2d');
+            cCtx.drawImage(img, bestRect.x, bestRect.y, bestRect.width, bestRect.height, 0, 0, bestRect.width, bestRect.height);
+            res = { url: cCanvas.toDataURL('image/jpeg', 0.95), rect: bestRect };
+          }
+          src.delete(); hsv.delete(); mask.delete(); low.delete(); high.delete(); kernel.delete(); contours.delete(); hierarchy.delete();
+          resolve(res);
+        } catch(e) { console.error(e); resolve(null); }
+      };
+      img.src = url;
+    });
+  }
+
+  // --- 赤枠エディタ (Canvas更新ロジックの改善) ---
+  let isDrawingRedBox = false;
+  let startX, startY;
+  
+  // リサイズ監視用オブザーバー
+  const redBoxResizeObserver = new ResizeObserver(entries => {
+    for (const entry of entries) {
+      if (entry.target === els.redBoxTargetImage) {
+        // 画像サイズが変わったらCanvasも合わせる
+        fitRedBoxCanvasToImage();
+      }
+    }
+  });
+
+  function fitRedBoxCanvasToImage() {
+    const img = els.redBoxTargetImage;
+    const canvas = els.redBoxCanvas;
+    
+    // 表示サイズが0なら何もしない
+    if(img.clientWidth === 0 || img.clientHeight === 0) return;
+
+    // キャンバスのサイズを表示サイズ（clientWidth/Height）に合わせる
+    // これにより、座標計算を常に表示ピクセルベースで行える
+    canvas.width = img.clientWidth;
+    canvas.height = img.clientHeight;
+    
+    // スタイルも一致させる（念のため）
+    canvas.style.width = img.clientWidth + 'px';
+    canvas.style.height = img.clientHeight + 'px';
+    
+    drawRedBoxesOnCanvas();
+  }
+
+  function openRedBoxEditor() {
+    if(images.length === 0) return;
+    const targetImg = images[0];
+    
+    els.redBoxTargetImage.onload = () => {
+      // 画像ロード後にリサイズ監視開始
+      redBoxResizeObserver.observe(els.redBoxTargetImage);
+      fitRedBoxCanvasToImage();
+      updateInputsFromLastBox();
+    };
+    els.redBoxTargetImage.src = targetImg.croppedUrl; 
+    els.redBoxModal.classList.add('active');
+  }
+
+  function initRedBoxCanvas() {
+     // リサイズオブザーバーで管理するため、初期化処理は実質 fitRedBoxCanvasToImage に委譲
+     // ここではイベントリスナーの登録のみ行う
+     
+     const canvas = els.redBoxCanvas;
+
+    // イベントリスナー (Canvas上でのドラッグ)
+    canvas.onmousedown = (e) => {
+      isDrawingRedBox = true;
+      const rect = canvas.getBoundingClientRect();
+      // キャンバスの内部解像度と表示サイズが一致しているのでscaleは1
+      startX = e.clientX - rect.left;
+      startY = e.clientY - rect.top;
+    };
+
+    canvas.onmousemove = (e) => {
+      if(!isDrawingRedBox) return;
+      const rect = canvas.getBoundingClientRect();
+      const currentX = e.clientX - rect.left;
+      const currentY = e.clientY - rect.top;
+      
+      drawRedBoxesOnCanvas(); // 既存描画
+      
+      // ドラッグ中の枠描画
+      const ctx = canvas.getContext('2d');
+      ctx.strokeStyle = 'red';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(startX, startY, currentX - startX, currentY - startY);
+      
+      // 入力値もリアルタイム更新
+      els.rbX.value = Math.round(Math.min(startX, currentX));
+      els.rbY.value = Math.round(Math.min(startY, currentY));
+      els.rbW.value = Math.round(Math.abs(currentX - startX));
+      els.rbH.value = Math.round(Math.abs(currentY - startY));
+    };
+
+    canvas.onmouseup = (e) => {
+      if(!isDrawingRedBox) return;
+      isDrawingRedBox = false;
+      const rect = canvas.getBoundingClientRect();
+      const endX = e.clientX - rect.left;
+      const endY = e.clientY - rect.top;
+      
+      const w = Math.abs(endX - startX);
+      const h = Math.abs(endY - startY);
+      
+      if(w > 5 && h > 5) {
+        const box = {
+          x: Math.min(startX, endX) / canvas.width,
+          y: Math.min(startY, endY) / canvas.height,
+          w: w / canvas.width,
+          h: h / canvas.height
+        };
+        redBoxes.push(box);
+      }
+      drawRedBoxesOnCanvas();
+      updateInputsFromLastBox();
+    };
+  }
+  
+  // 初回のみイベント登録
+  initRedBoxCanvas();
+
+
+  function updateInputsFromLastBox() {
+    if(redBoxes.length > 0) {
+      const last = redBoxes[redBoxes.length - 1];
+      const w = els.redBoxCanvas.width;
+      const h = els.redBoxCanvas.height;
+      els.rbX.value = Math.round(last.x * w);
+      els.rbY.value = Math.round(last.y * h);
+      els.rbW.value = Math.round(last.w * w);
+      els.rbH.value = Math.round(last.h * h);
+    } else {
+      els.rbX.value = 0; els.rbY.value = 0; els.rbW.value = 0; els.rbH.value = 0;
+    }
+  }
+
+  // 手動入力値の反映
+  window.updateRedBoxFromInputs = () => {
+    if(redBoxes.length === 0) {
+       // 新規作成
+       redBoxes.push({x:0, y:0, w:0, h:0}); 
+    }
+    const last = redBoxes[redBoxes.length - 1];
+    const w = els.redBoxCanvas.width;
+    const h = els.redBoxCanvas.height;
+    
+    const inputX = parseInt(els.rbX.value) || 0;
+    const inputY = parseInt(els.rbY.value) || 0;
+    const inputW = parseInt(els.rbW.value) || 0;
+    const inputH = parseInt(els.rbH.value) || 0;
+
+    last.x = inputX / w;
+    last.y = inputY / h;
+    last.w = inputW / w;
+    last.h = inputH / h;
+
+    drawRedBoxesOnCanvas();
+  };
+
+  function drawRedBoxesOnCanvas() {
+    const canvas = els.redBoxCanvas;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // マスクモードのプレビュー
+    if (redBoxConfig.isMaskMode) {
+      ctx.fillStyle = redBoxConfig.maskColor + '80'; // 半透明でプレビュー
+      // 全体を塗る
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // 枠内を切り抜く（透明にする）
+      ctx.globalCompositeOperation = 'destination-out';
+      redBoxes.forEach(box => {
+        ctx.fillRect(
+          box.x * canvas.width,
+          box.y * canvas.height,
+          box.w * canvas.width,
+          box.h * canvas.height
+        );
+      });
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // 枠線の描画 (常に表示して範囲をわかりやすく)
+    ctx.strokeStyle = 'red';
+    ctx.lineWidth = 4;
+    redBoxes.forEach(box => {
+      ctx.strokeRect(
+        box.x * canvas.width,
+        box.y * canvas.height,
+        box.w * canvas.width,
+        box.h * canvas.height
+      );
+    });
+  }
+
+  function clearRedBoxes() {
+    redBoxes = [];
+    drawRedBoxesOnCanvas();
+    updateInputsFromLastBox();
+  }
+
+  async function applyRedBoxesToAll() {
+    showStatus(true, '枠設定を適用中...');
+    redBoxResizeObserver.unobserve(els.redBoxTargetImage); // 監視停止
+    await applyRedBoxesInternal();
+    renderGrid();
+    updatePdfPreview();
+    closeModal('redBoxModal');
+    showStatus(false);
+  }
+
+  // 内部処理用
+  async function applyRedBoxesInternal() {
+    if(redBoxes.length === 0) return;
+
+    for (let i = 0; i < images.length; i++) {
+      const baseImgUrl = images[i].croppedUrl;
+      const resultUrl = await drawRedBoxesOnImage(baseImgUrl);
+      images[i].dataUrl = resultUrl;
+    }
+  }
+
+  function drawRedBoxesOnImage(url) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        
+        if (redBoxConfig.isMaskMode) {
+           // マスクモード: 全体を塗りつぶし、枠内だけ画像を表示
+           
+           // 別キャンバスにマスクを作成
+           const maskCanvas = document.createElement('canvas');
+           maskCanvas.width = img.width;
+           maskCanvas.height = img.height;
+           const mCtx = maskCanvas.getContext('2d');
+           
+           // 指定色で塗りつぶし
+           mCtx.fillStyle = redBoxConfig.maskColor;
+           mCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
+           
+           // 枠の部分を透明にくり抜く
+           mCtx.globalCompositeOperation = 'destination-out';
+           redBoxes.forEach(box => {
+              mCtx.fillRect(
+                box.x * canvas.width,
+                box.y * canvas.height,
+                box.w * canvas.width,
+                box.h * canvas.height
+              );
+           });
+           
+           // 元画像の上にマスクを重ねる
+           ctx.drawImage(maskCanvas, 0, 0);
+
+        } else {
+           // 通常モード: 赤枠線を描画
+           ctx.strokeStyle = 'red';
+           ctx.lineWidth = Math.max(3, img.width * 0.005); 
+           redBoxes.forEach(box => {
+             ctx.strokeRect(
+               box.x * canvas.width,
+               box.y * canvas.height,
+               box.w * canvas.width,
+               box.h * canvas.height
+             );
+           });
+        }
+        resolve(canvas.toDataURL('image/jpeg', 0.95));
+      };
+      img.src = url;
+    });
+  }
+
+  // --- スポイト機能 ---
+  function handleColorPick(img, offsetX, offsetY, isModal) {
+    const rect = img.getBoundingClientRect();
+    const naturalRatio = img.naturalWidth / img.naturalHeight;
+    const displayRatio = rect.width / rect.height;
+    let drawW, drawH, startX, startY;
+    if (naturalRatio > displayRatio) {
+      drawW = rect.width; drawH = rect.width / naturalRatio;
+      startX = 0; startY = (rect.height - drawH) / 2;
+    } else {
+      drawH = rect.height; drawW = rect.height * naturalRatio;
+      startX = (rect.width - drawW) / 2; startY = 0;
+    }
+    let clickX = offsetX - startX; let clickY = offsetY - startY;
+    if (clickX < 0 || clickX > drawW || clickY < 0 || clickY > drawH) return;
+    const scale = img.naturalWidth / drawW;
+    const srcX = clickX * scale; const srcY = clickY * scale;
+    const canvas = document.createElement('canvas');
+    canvas.width = 1; canvas.height = 1;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, srcX, srcY, 1, 1, 0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0,0,1,1).data;
+    const hsv = rgbToHsv(r, g, b);
+    
+    // スポイトで取得した色をマスク色に設定
+    const hex = "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+    redBoxConfig.maskColor = hex;
+    els.maskColorInput.value = hex;
+
+    document.getElementById('slider-h').setValues(Math.max(0, hsv[0]-15), Math.min(180, hsv[0]+15));
+    document.getElementById('slider-s').setValues(Math.max(0, hsv[1]-60), Math.min(255, hsv[1]+60));
+    document.getElementById('slider-v').setValues(Math.max(0, hsv[2]-60), Math.min(255, hsv[2]+60));
+    if (isModal) closePickModalAndRun(true);
+  }
+
+  function rgbToHsv(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    let max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, v = max;
+    let d = max - min;
+    s = max == 0 ? 0 : d / max;
+    if (max == min) h = 0;
+    else {
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h /= 6;
+    }
+    return [Math.round(h * 179), Math.round(s * 255), Math.round(v * 255)];
+  }
+
+  // --- 手動トリミングモーダル ---
+  function openManualCrop(index, e) {
+    if(e) e.stopPropagation();
+    currentEditIndex = index;
+    
+    // 前回のcropper破棄
+    if (cropper) {
+        cropper.destroy();
+        cropper = null;
+    }
+
+    els.cropModal.classList.add('active');
+    
+    // 画像ロード後にCropper初期化
+    els.cropTarget.onload = () => {
+      const detectRect = images[index].detectRect;
+      
+      const options = {
+        viewMode: 1,
+        autoCropArea: 0.9,
+        responsive: true,
+        checkCrossOrigin: false,
+        ready: function() {
+          if (detectRect) {
+            this.cropper.setData(detectRect);
+          }
+        }
+      };
+      
+      cropper = new Cropper(els.cropTarget, options);
+    };
+
+    // 画像ソースを設定（onloadをトリガーするため最後に）
+    els.cropTarget.src = images[index].originalUrl; 
+  }
+
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('active');
+    if (id === 'cropModal' && cropper) { cropper.destroy(); cropper = null; }
+    if (id === 'redBoxModal') { redBoxResizeObserver.unobserve(els.redBoxTargetImage); } // 監視停止
+  }
+  async function applyManualCrop() {
+    if (!cropper) return;
+    const canvas = cropper.getCroppedCanvas();
+    const newUrl = canvas.toDataURL('image/jpeg', 0.95);
+    images[currentEditIndex].croppedUrl = newUrl;
+    
+    // 赤枠があれば再適用
+    if(redBoxes.length > 0) {
+      images[currentEditIndex].dataUrl = await drawRedBoxesOnImage(newUrl);
+    } else {
+      images[currentEditIndex].dataUrl = newUrl;
+    }
+    
+    images[currentEditIndex].isEdited = true;
+    renderGrid();
+    updatePdfPreview();
+    closeModal('cropModal');
+  }
+
+  // --- 編集操作 ---
+  window.removeImage = (i, e) => { 
+    if(e) e.stopPropagation(); 
+    images.splice(i, 1); 
+    renderGrid(); 
+    updatePdfPreview(); 
+  };
+  
+  window.undoEdit = async (i, e) => {
+    if(e) e.stopPropagation();
+    images[i].croppedUrl = images[i].originalUrl;
+    images[i].detectRect = null; // 検出情報もリセット
+    
+    // 赤枠があれば再適用
+    if(redBoxes.length > 0) {
+      images[i].dataUrl = await drawRedBoxesOnImage(images[i].originalUrl);
+    } else {
+      images[i].dataUrl = images[i].originalUrl;
+    }
+    
+    images[i].isEdited = false;
+    renderGrid();
+    updatePdfPreview();
+  };
+  window.clearAll = () => { images = []; redBoxes = []; renderGrid(); updatePdfPreview(); };
+  
+  function resetAllProcessing() {
+    // 状態を完全リセット
+    images.forEach(img => {
+      img.dataUrl = img.originalUrl;
+      img.croppedUrl = img.originalUrl;
+      img.detectRect = null;
+      img.isEdited = false;
+    });
+    redBoxes = [];
+    
+    // 再描画
+    renderGrid();
+    updatePdfPreview();
+    updateButtonStates();
+  }
+
+  // --- ドラッグ＆ドロップ並べ替え ---
+  let dragSrcEl = null;
+  function setupDragAndDrop() {
+    const items = document.querySelectorAll('.preview-item');
+    items.forEach(item => {
+      item.addEventListener('dragstart', function(e) {
+        this.classList.add('dragging');
+        dragSrcEl = this;
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      item.addEventListener('dragover', function(e) { if (e.preventDefault) e.preventDefault(); return false; });
+      item.addEventListener('drop', function(e) {
+        e.stopPropagation();
+        if (dragSrcEl !== this) {
+          const srcIdx = parseInt(dragSrcEl.getAttribute('data-index'));
+          const dstIdx = parseInt(this.getAttribute('data-index'));
+          const [moved] = images.splice(srcIdx, 1);
+          images.splice(dstIdx, 0, moved);
+          renderGrid(); updatePdfPreview();
+        }
+        return false;
+      });
+      item.addEventListener('dragend', function() { this.classList.remove('dragging'); });
+    });
+  }
+
+  // --- PDF生成関連 ---
+  function updatePdfPreview() {
+    const orientation = els.orientation.value;
+    const imagesPerPage = parseInt(els.imagesPerPage.value);
+    const margin = parseInt(els.margin.value);
+    els.pdfPage.className = `pdf-page-preview ${orientation}`;
+    if (images.length === 0) { els.pdfPage.innerHTML = ''; return; }
+    const cols = Math.ceil(Math.sqrt(imagesPerPage));
+    const rows = Math.ceil(imagesPerPage / cols);
+    let html = `<div class="pdf-grid-preview" style="grid-template-columns: repeat(${cols}, 1fr); grid-template-rows: repeat(${rows}, 1fr); padding:${margin/2}px">`;
+    for (let i = 0; i < imagesPerPage; i++) {
+      if (i < images.length) html += `<div class="pdf-cell-preview"><img src="${images[i].dataUrl}"></div>`;
+      else html += `<div class="pdf-cell-preview"></div>`;
+    }
+    html += '</div>';
+    els.pdfPage.innerHTML = html;
+  }
+
+  async function generatePDF() {
+    if (images.length === 0) return;
+    showStatus(true, 'PDF生成中...');
+    await new Promise(r => setTimeout(r, 100));
+    try {
+      const { jsPDF } = window.jspdf;
+      const orientation = els.orientation.value;
+      const format = els.pageSize.value;
+      const imagesPerPage = parseInt(els.imagesPerPage.value);
+      const margin = parseInt(els.margin.value);
+      const doc = new jsPDF({ orientation, unit: 'mm', format });
+      const pW = doc.internal.pageSize.getWidth();
+      const pH = doc.internal.pageSize.getHeight();
+      const cols = Math.ceil(Math.sqrt(imagesPerPage));
+      const rows = Math.ceil(imagesPerPage / cols);
+      const cellW = (pW - margin * 2) / cols;
+      const cellH = (pH - margin * 2) / rows;
+      const textAreaH = 6; 
+
+      for (let i = 0; i < images.length; i++) {
+        if (i > 0 && i % imagesPerPage === 0) doc.addPage();
+        const imgData = images[i].dataUrl;
+        const imgEl = await loadImage(imgData);
+        const posIndex = i % imagesPerPage;
+        const c = posIndex % cols;
+        const r = Math.floor(posIndex / cols);
+        const x = margin + c * cellW;
+        const y = margin + r * cellH;
+        const availableH = cellH - textAreaH - 2; 
+        const imgRatio = imgEl.width / imgEl.height;
+        const areaRatio = cellW / availableH;
+        let w, h, dx, dy;
+        if (imgRatio > areaRatio) { w = cellW - 2; h = w / imgRatio; }
+        else { h = availableH; w = h * imgRatio; }
+        dx = x + (cellW - w) / 2;
+        dy = y + (availableH - h) / 2; 
+        doc.addImage(imgData, 'JPEG', dx, dy, w, h);
+        doc.setFontSize(8);
+        const text = images[i].name;
+        const textW = doc.getTextWidth(text);
+        let tx = x + cellW / 2 - textW / 2;
+        if(tx < x) tx = x; 
+        const ty = y + cellH - 2;
+        doc.text(text, tx, ty);
+      }
+      doc.save('combined_images.pdf');
+      showStatus(false);
+    } catch(e) { console.error(e); alert('PDF生成エラー: ' + e.message); showStatus(false); }
+  }
+
+  function loadImage(src) { return new Promise((r, j) => { const i = new Image(); i.onload = () => r(i); i.onerror = j; i.src = src; }); }
+  function showStatus(show, text = '') {
+    if (show) { els.statusText.textContent = text; els.statusBar.classList.add('show'); }
+    else { els.statusBar.classList.remove('show'); }
+  }
+</script>
+</body>
+</html>

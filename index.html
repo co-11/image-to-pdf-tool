@@ -11,6 +11,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
   <!-- OpenCV.js -->
   <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady()"></script>
+  <!-- JSZip & FileSaver (for Image/ZIP export) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   
@@ -266,6 +269,16 @@
     .form-group { margin-bottom: 12px; }
     .form-group label { display: block; font-size: 12px; color: #64748b; margin-bottom: 4px; }
     .form-control { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 13px; }
+    
+    /* ラジオボタンリスト */
+    .radio-list {
+        display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;
+    }
+    .radio-item {
+        display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;
+        padding: 4px 0;
+    }
+    .radio-item input { margin: 0; cursor: pointer; }
 
     /* デュアルスライダー */
     .dual-slider-container { margin-top: 0; margin-bottom: 4px; }
@@ -507,30 +520,55 @@
     <!-- PDF作成アクション -->
     <div class="sidebar-section">
       <div class="sidebar-title"><i data-lucide="file-output"></i> 出力アクション</div>
+      
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label style="margin-bottom:8px;">出力モード</label>
+        <div class="radio-list">
+          <label class="radio-item">
+            <input type="radio" name="outputMode" value="pdf-image" checked>
+            <span>PDF (中身を画像化) <small style="color:#64748b; margin-left:4px;">推奨</small></span>
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="outputMode" value="pdf-text">
+            <span>PDF (テキスト保持)</span>
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="outputMode" value="image-file">
+            <span>画像ファイル (JPG/ZIP)</span>
+          </label>
+        </div>
+      </div>
+
       <button id="generateBtn" class="btn btn-primary" disabled>
-        <i data-lucide="download"></i> PDFを作成して保存
+        <i data-lucide="download"></i> 保存を実行
       </button>
     </div>
 
     <!-- PDFレイアウト設定 -->
     <div class="sidebar-section">
-      <div class="sidebar-title"><i data-lucide="settings-2"></i> PDFレイアウト</div>
+      <div class="sidebar-title"><i data-lucide="settings-2"></i> レイアウト設定</div>
       <div class="form-group">
         <label>用紙サイズ</label>
         <select id="pageSize" class="form-control">
-          <option value="a4">A4</option><option value="a3">A3</option>
+          <option value="a4">A4</option>
+          <option value="a3" selected>A3</option>
         </select>
       </div>
       <div class="form-group">
         <label>向き</label>
         <select id="orientation" class="form-control">
-          <option value="portrait">縦 (Portrait)</option><option value="landscape">横 (Landscape)</option>
+          <option value="portrait">縦 (Portrait)</option>
+          <option value="landscape" selected>横 (Landscape)</option>
         </select>
       </div>
       <div class="form-group">
         <label>1ページあたりの枚数</label>
         <select id="imagesPerPage" class="form-control">
-          <option value="1">1枚</option><option value="2">2枚</option><option value="4" selected>4枚</option><option value="6">6枚</option><option value="9">9枚</option>
+          <option value="1">1枚</option>
+          <option value="2">2枚</option>
+          <option value="4">4枚</option>
+          <option value="6">6枚</option>
+          <option value="9" selected>9枚</option>
         </select>
       </div>
       <div class="form-group">
@@ -864,7 +902,7 @@
 
   els.autoCropBtn.onclick = runAutoCropForce;
   els.pickColorBtn.onclick = () => { if(images.length > 0) openPickModal(images[0]); };
-  els.generateBtn.onclick = generatePDF;
+  els.generateBtn.onclick = generateOutput; 
   els.pickImage.onclick = (e) => handleColorPick(e.target, e.offsetX, e.offsetY, true);
   els.redBoxBtn.onclick = openRedBoxEditor;
 
@@ -1583,54 +1621,230 @@
     els.pdfPage.innerHTML = html;
   }
 
-  async function generatePDF() {
+  // --- 共通レンダリング関数 (Canvas生成) ---
+  // 指定ページの内容を描画したCanvasを返す
+  async function renderPageToCanvas(pageIndex, totalPages, config) {
+    const { orientation, format, imagesPerPage, margin } = config;
+    const widthMm = (format === 'a3' ? (orientation === 'portrait' ? 297 : 420) : (orientation === 'portrait' ? 210 : 297));
+    const heightMm = (format === 'a3' ? (orientation === 'portrait' ? 420 : 297) : (orientation === 'portrait' ? 297 : 210));
+    
+    // 画質設定 (DPI相当)
+    // 修正: 解像度を向上 (3 -> 5)
+    const scale = 5; 
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(widthMm * scale);
+    canvas.height = Math.floor(heightMm * scale);
+    const ctx = canvas.getContext('2d');
+    
+    // 白背景
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    const cols = Math.ceil(Math.sqrt(imagesPerPage));
+    const rows = Math.ceil(imagesPerPage / cols);
+    const cellW_mm = (widthMm - margin * 2) / cols;
+    const cellH_mm = (heightMm - margin * 2) / rows;
+    
+    const startIdx = pageIndex * imagesPerPage;
+    const endIdx = Math.min(startIdx + imagesPerPage, images.length);
+    
+    ctx.fillStyle = 'black';
+    ctx.textAlign = 'center';
+    // ベースフォントサイズ
+    const baseFontSize = 8 * scale;
+    
+    // レイアウト調整用定数 (mm)
+    const cellGap_mm = 4; // 画像周囲の隙間
+    const textAreaH_mm = 8; // テキストエリア高さ
+    
+    for (let i = startIdx; i < endIdx; i++) {
+      const posIndex = i - startIdx;
+      const c = posIndex % cols;
+      const r = Math.floor(posIndex / cols);
+      
+      const x_mm = margin + c * cellW_mm;
+      const y_mm = margin + r * cellH_mm;
+      
+      // 画像が描画できる最大領域（隙間とテキストエリアを除く）
+      const availableW_mm = cellW_mm - (cellGap_mm * 2);
+      const availableH_mm = cellH_mm - textAreaH_mm - (cellGap_mm * 2);
+      
+      const imgData = images[i].dataUrl;
+      const imgEl = await loadImage(imgData);
+      
+      const imgRatio = imgEl.width / imgEl.height;
+      const areaRatio = availableW_mm / availableH_mm;
+      
+      let w_mm, h_mm;
+      if (imgRatio > areaRatio) {
+        w_mm = availableW_mm;
+        h_mm = w_mm / imgRatio;
+      } else {
+        h_mm = availableH_mm;
+        w_mm = h_mm * imgRatio;
+      }
+      
+      // 中央配置（隙間分オフセット）
+      const dx_mm = x_mm + cellGap_mm + (availableW_mm - w_mm) / 2;
+      const dy_mm = y_mm + cellGap_mm + (availableH_mm - h_mm) / 2;
+      
+      // 画像描画
+      ctx.drawImage(imgEl, dx_mm * scale, dy_mm * scale, w_mm * scale, h_mm * scale);
+      
+      // テキスト描画 (画像下4mm + ベースライン調整)
+      const text = images[i].name;
+      const tx_mm = dx_mm + w_mm / 2; // 画像中央
+      const ty_mm = dy_mm + h_mm + 4 + 2; 
+      
+      // 修正: テキスト幅調整 (無理な長体ではなくフォントサイズ縮小で対応)
+      const maxTextWidth = w_mm * scale;
+      let currentFontSize = baseFontSize;
+      ctx.font = `${currentFontSize}px sans-serif`;
+      
+      const textMetrics = ctx.measureText(text);
+      if (textMetrics.width > maxTextWidth) {
+          // 幅に収まるように比率計算してフォントサイズを落とす
+          const ratio = maxTextWidth / textMetrics.width;
+          currentFontSize = Math.floor(baseFontSize * ratio);
+          // 極端に小さくなりすぎないよう下限を設けるならここで調整
+          if (currentFontSize < 3 * scale) currentFontSize = 3 * scale;
+          ctx.font = `${currentFontSize}px sans-serif`;
+      }
+
+      ctx.fillText(text, tx_mm * scale, ty_mm * scale);
+    }
+    
+    return canvas;
+  }
+
+  // --- 出力生成メイン ---
+  async function generateOutput() {
     if (images.length === 0) return;
-    showStatus(true, 'PDF生成中...');
-    await new Promise(r => setTimeout(r, 100));
+    
+    const mode = document.querySelector('input[name="outputMode"]:checked').value;
+    const isImageMode = (mode === 'image-file');
+    const isRasterPdf = (mode === 'pdf-image');
+    
+    const loadingText = isImageMode ? '画像生成中...' : 'PDF生成中...';
+    showStatus(true, loadingText);
+    await new Promise(r => setTimeout(r, 100)); // UI更新待ち
+
     try {
-      const { jsPDF } = window.jspdf;
       const orientation = els.orientation.value;
       const format = els.pageSize.value;
       const imagesPerPage = parseInt(els.imagesPerPage.value);
       const margin = parseInt(els.margin.value);
-      const doc = new jsPDF({ orientation, unit: 'mm', format });
-      const pW = doc.internal.pageSize.getWidth();
-      const pH = doc.internal.pageSize.getHeight();
-      const cols = Math.ceil(Math.sqrt(imagesPerPage));
-      const rows = Math.ceil(imagesPerPage / cols);
-      const cellW = (pW - margin * 2) / cols;
-      const cellH = (pH - margin * 2) / rows;
-      const textAreaH = 6; 
+      const config = { orientation, format, imagesPerPage, margin };
+      
+      const totalPages = Math.ceil(images.length / imagesPerPage);
 
-      for (let i = 0; i < images.length; i++) {
-        if (i > 0 && i % imagesPerPage === 0) doc.addPage();
-        const imgData = images[i].dataUrl;
-        const imgEl = await loadImage(imgData);
-        const posIndex = i % imagesPerPage;
-        const c = posIndex % cols;
-        const r = Math.floor(posIndex / cols);
-        const x = margin + c * cellW;
-        const y = margin + r * cellH;
-        const availableH = cellH - textAreaH - 2; 
-        const imgRatio = imgEl.width / imgEl.height;
-        const areaRatio = cellW / availableH;
-        let w, h, dx, dy;
-        if (imgRatio > areaRatio) { w = cellW - 2; h = w / imgRatio; }
-        else { h = availableH; w = h * imgRatio; }
-        dx = x + (cellW - w) / 2;
-        dy = y + (availableH - h) / 2; 
-        doc.addImage(imgData, 'JPEG', dx, dy, w, h);
-        doc.setFontSize(8);
-        const text = images[i].name;
-        const textW = doc.getTextWidth(text);
-        let tx = x + cellW / 2 - textW / 2;
-        if(tx < x) tx = x; 
-        const ty = y + cellH - 2;
-        doc.text(text, tx, ty);
+      if (isImageMode) {
+        // --- 画像ファイル出力モード ---
+        const zip = new JSZip();
+        for (let p = 0; p < totalPages; p++) {
+          const canvas = await renderPageToCanvas(p, totalPages, config);
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+          const fileName = `page_${p + 1}.jpg`;
+          
+          if (totalPages === 1) {
+             saveAs(blob, fileName);
+             showStatus(false);
+             return;
+          }
+          zip.file(fileName, blob);
+        }
+        const content = await zip.generateAsync({type:"blob"});
+        saveAs(content, "combined_images.zip");
+
+      } else if (isRasterPdf) {
+        // --- PDF (中身画像化) モード ---
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation, unit: 'mm', format });
+        const widthMm = doc.internal.pageSize.getWidth();
+        const heightMm = doc.internal.pageSize.getHeight();
+
+        for (let p = 0; p < totalPages; p++) {
+          if (p > 0) doc.addPage();
+          const canvas = await renderPageToCanvas(p, totalPages, config);
+          const imgDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+          doc.addImage(imgDataUrl, 'JPEG', 0, 0, widthMm, heightMm, `PAGE_${p}`, 'FAST');
+        }
+        doc.save('combined_images.pdf');
+
+      } else {
+        // --- PDF (テキスト保持) モード ---
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation, unit: 'mm', format });
+        const pW = doc.internal.pageSize.getWidth();
+        const pH = doc.internal.pageSize.getHeight();
+        const cols = Math.ceil(Math.sqrt(imagesPerPage));
+        const rows = Math.ceil(imagesPerPage / cols);
+        const cellW = (pW - margin * 2) / cols;
+        const cellH = (pH - margin * 2) / rows;
+        
+        // レイアウト調整用定数 (mm)
+        const cellGap = 4; // 画像周囲の隙間
+        const textAreaH = 8; // テキストエリア高さ
+
+        for (let i = 0; i < images.length; i++) {
+          if (i > 0 && i % imagesPerPage === 0) doc.addPage();
+          const imgData = images[i].dataUrl;
+          const imgEl = await loadImage(imgData);
+          const posIndex = i % imagesPerPage;
+          const c = posIndex % cols;
+          const r = Math.floor(posIndex / cols);
+          const x = margin + c * cellW;
+          const y = margin + r * cellH;
+          
+          // 画像が描画できる最大領域
+          const availableW = cellW - (cellGap * 2);
+          const availableH = cellH - textAreaH - (cellGap * 2);
+          
+          const imgRatio = imgEl.width / imgEl.height;
+          const areaRatio = availableW / availableH;
+          
+          let w, h;
+          if (imgRatio > areaRatio) {
+             w = availableW;
+             h = w / imgRatio;
+          } else {
+             h = availableH;
+             w = h * imgRatio;
+          }
+          
+          // 配置位置（余白分ずらす）
+          const dx = x + cellGap + (availableW - w) / 2;
+          const dy = y + cellGap + (availableH - h) / 2; 
+          
+          const safeAlias = (images[i].name.replace(/[^a-zA-Z0-9]/g, '_') + '_' + i).substring(0, 50);
+          doc.addImage(imgData, 'JPEG', dx, dy, w, h, safeAlias);
+          
+          // テキスト幅調整 (フォントサイズ縮小)
+          let fontSize = 8;
+          doc.setFontSize(fontSize);
+          const text = images[i].name;
+          
+          // 幅が画像幅を超える場合は縮小 (最小4pt)
+          while (doc.getTextWidth(text) > w && fontSize > 4) {
+              fontSize -= 0.5;
+              doc.setFontSize(fontSize);
+          }
+
+          // 画像中央に配置
+          const tx = dx + w / 2 - doc.getTextWidth(text) / 2;
+          const ty = dy + h + 4; // 画像下4mmに配置して被り防止
+          
+          doc.text(text, tx, ty);
+        }
+        doc.save('combined_images.pdf');
       }
-      doc.save('combined_images.pdf');
+      
       showStatus(false);
-    } catch(e) { console.error(e); alert('PDF生成エラー: ' + e.message); showStatus(false); }
+    } catch(e) { 
+      console.error(e); 
+      alert('保存エラー: ' + e.message); 
+      showStatus(false); 
+    }
   }
 
   function loadImage(src) { return new Promise((r, j) => { const i = new Image(); i.onload = () => r(i); i.onerror = j; i.src = src; }); }

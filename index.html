@@ -16,11 +16,15 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Google Fonts: Roboto Mono (視認性の高い等幅フォント) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@500;700&display=swap" rel="stylesheet">
   
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family: 'Roboto Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; /* UIも少しテック風に */
       background: #f1f5f9;
       height: 100vh;
       overflow: hidden;
@@ -190,6 +194,8 @@
       background: white;
       border-top: 1px solid #f1f5f9;
       text-align: center;
+      /* ファイル名もRoboto Monoで表示 */
+      font-family: 'Roboto Mono', monospace; 
     }
     .preview-item .index {
       position: absolute; top: 6px; left: 6px;
@@ -557,8 +563,8 @@
       <div class="form-group">
         <label>向き</label>
         <select id="orientation" class="form-control">
-          <option value="portrait">縦 (Portrait)</option>
-          <option value="landscape" selected>横 (Landscape)</option>
+          <option value="portrait">縦</option>
+          <option value="landscape" selected>横</option>
         </select>
       </div>
       <div class="form-group">
@@ -566,9 +572,9 @@
         <select id="imagesPerPage" class="form-control">
           <option value="1">1枚</option>
           <option value="2">2枚</option>
-          <option value="4">4枚</option>
+          <option value="4" selected>4枚</option>
           <option value="6">6枚</option>
-          <option value="9" selected>9枚</option>
+          <option value="9">9枚</option>
         </select>
       </div>
       <div class="form-group">
@@ -724,6 +730,9 @@
     isMaskMode: true, // Default to true
     maskColor: '#ffffff'
   };
+  
+  // ★追加: トリミング時のアップスケール倍率 (2 -> 3)
+  const CROP_SCALE = 3;
 
   // 要素取得
   const els = {
@@ -749,7 +758,7 @@
     // スライダーパネル周り
     toggleSlidersBtn: document.getElementById('toggleSlidersBtn'),
     sliderPanel: document.getElementById('sliderPanel'),
-
+    
     // プレビューモーダル用
     previewModal: document.getElementById('previewModal'),
     previewModalTitle: document.getElementById('previewModalTitle'),
@@ -1141,9 +1150,14 @@
           let res = null;
           if (bestRect) {
             const cCanvas = document.createElement('canvas');
-            cCanvas.width = bestRect.width; cCanvas.height = bestRect.height;
+            // 修正: アップスケール適用 (CROP_SCALE)
+            cCanvas.width = bestRect.width * CROP_SCALE; 
+            cCanvas.height = bestRect.height * CROP_SCALE;
             const cCtx = cCanvas.getContext('2d');
-            cCtx.drawImage(img, bestRect.x, bestRect.y, bestRect.width, bestRect.height, 0, 0, bestRect.width, bestRect.height);
+            // 画質設定
+            cCtx.imageSmoothingEnabled = true;
+            cCtx.imageSmoothingQuality = 'high';
+            cCtx.drawImage(img, bestRect.x, bestRect.y, bestRect.width, bestRect.height, 0, 0, cCanvas.width, cCanvas.height);
             res = { url: cCanvas.toDataURL('image/jpeg', 0.95), rect: bestRect };
           }
           src.delete(); hsv.delete(); mask.delete(); low.delete(); high.delete(); kernel.delete(); contours.delete(); hierarchy.delete();
@@ -1518,7 +1532,21 @@
   }
   async function applyManualCrop() {
     if (!cropper) return;
-    const canvas = cropper.getCroppedCanvas();
+    
+    const data = cropper.getData(); // 元画像ベースの切り抜き座標・サイズ
+    
+    // 修正: アップスケール後のサイズを整数で計算
+    // Canvasのサイズは整数でないとぼやける原因になるためMath.roundを使用
+    const targetWidth = Math.round(data.width * CROP_SCALE);
+    const targetHeight = Math.round(data.height * CROP_SCALE);
+
+    const canvas = cropper.getCroppedCanvas({
+        width: targetWidth,
+        height: targetHeight,
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high'
+    });
+    
     const newUrl = canvas.toDataURL('image/jpeg', 0.95);
     images[currentEditIndex].croppedUrl = newUrl;
     
@@ -1699,16 +1727,19 @@
       // 修正: テキスト幅調整 (無理な長体ではなくフォントサイズ縮小で対応)
       const maxTextWidth = w_mm * scale;
       let currentFontSize = baseFontSize;
-      ctx.font = `${currentFontSize}px sans-serif`;
+      
+      // フォント設定：視認性の高い等幅フォント「Roboto Mono」を優先
+      // 日本語はシステムフォント（Noto Sans JPなど）にフォールバック
+      ctx.font = `500 ${currentFontSize}px 'Roboto Mono', 'Noto Sans JP', sans-serif`;
       
       const textMetrics = ctx.measureText(text);
       if (textMetrics.width > maxTextWidth) {
           // 幅に収まるように比率計算してフォントサイズを落とす
           const ratio = maxTextWidth / textMetrics.width;
           currentFontSize = Math.floor(baseFontSize * ratio);
-          // 極端に小さくなりすぎないよう下限を設けるならここで調整
+          // 極端に小さくなりすぎないよう下限を設ける
           if (currentFontSize < 3 * scale) currentFontSize = 3 * scale;
-          ctx.font = `${currentFontSize}px sans-serif`;
+          ctx.font = `500 ${currentFontSize}px 'Roboto Mono', 'Noto Sans JP', sans-serif`;
       }
 
       ctx.fillText(text, tx_mm * scale, ty_mm * scale);

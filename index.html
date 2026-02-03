@@ -9,8 +9,6 @@
   <!-- Cropper.js -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-  <!-- OpenCV.js -->
-  <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady()"></script>
   <!-- JSZip & FileSaver (for Image/ZIP export) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
@@ -888,11 +886,12 @@
   };
 
   // OpenCV読み込み完了コールバック
-  function onOpenCvReady() {
+  // グローバルスコープに配置してHTML側から呼べるようにする
+  window.onOpenCvReady = function() {
     isOpenCvReady = true;
     console.log("OpenCV Ready");
     updateButtonStates();
-  }
+  };
 
   function updateButtonStates() {
     const hasImages = images.length > 0;
@@ -948,10 +947,7 @@
       isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
 
-    // アイコン切り替え (Lucideアイコンの属性操作ではなく、要素の再生成/クラス操作が必要かもだが、
-    // ここではlucide.createIcons()が走った後のsvg要素の中身をいじるより、
-    // data-lucide属性を書き換えてcreateIconsしなおすのが簡単)
-    
+    // アイコン切り替え
     const iconName = isDark ? 'sun' : 'moon';
     els.themeIcon.setAttribute('data-lucide', iconName);
     lucide.createIcons();
@@ -2052,5 +2048,7 @@
     else { els.statusBar.classList.remove('show'); }
   }
 </script>
+<!-- OpenCV.js: メインスクリプトの後ろで読み込むことで onOpenCvReady の定義を保証 -->
+<script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady()"></script>
 </body>
 </html>

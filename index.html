@@ -22,16 +22,91 @@
   <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@500;700&display=swap" rel="stylesheet">
   
   <style>
+    /* CSS変数によるテーマ定義 */
+    :root {
+      /* ライトモード（デフォルト） */
+      --bg-app: #f1f5f9;       /* アプリ背景 */
+      --bg-panel: #ffffff;     /* ヘッダー・サイドバー背景 */
+      --bg-content: #f8fafc;   /* メインコンテンツ背景 */
+      --bg-card: #ffffff;      /* カード背景 */
+      --bg-input: #ffffff;     /* 入力フォーム背景 */
+      --bg-toolbar: #ffffff;   /* ツールバー背景 */
+      --bg-modal: #ffffff;     /* モーダル背景 */
+      --bg-modal-footer: #f8fafc; /* モーダルフッター背景 */
+      
+      --text-main: #334155;    /* メインテキスト */
+      --text-head: #1e293b;    /* 見出しテキスト */
+      --text-sub: #64748b;     /* サブテキスト */
+      --text-on-dark: #ffffff; /* 暗い背景上のテキスト */
+
+      --border-color: #e2e8f0; /* 境界線 */
+      --border-input: #cbd5e1; /* 入力フォーム枠線 */
+      
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+
+      --color-primary: #3b82f6;
+      --color-primary-hover: #2563eb;
+    }
+
+    /* ダークモード定義の共通化 */
+    /* 1. システム設定がダーク かつ 手動設定がライトでない場合 */
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg-app: #020617;       /* Slate 950 */
+        --bg-panel: #0f172a;     /* Slate 900 */
+        --bg-content: #020617;   /* Slate 950 */
+        --bg-card: #1e293b;      /* Slate 800 */
+        --bg-input: #1e293b;     /* Slate 800 */
+        --bg-toolbar: #0f172a;   /* Slate 900 */
+        --bg-modal: #1e293b;     /* Slate 800 */
+        --bg-modal-footer: #0f172a; /* Slate 900 */
+
+        --text-main: #e2e8f0;    /* Slate 200 */
+        --text-head: #f8fafc;    /* Slate 50 */
+        --text-sub: #94a3b8;     /* Slate 400 */
+        
+        --border-color: #334155; /* Slate 700 */
+        --border-input: #475569; /* Slate 600 */
+        
+        --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+      }
+    }
+    
+    /* 2. 手動設定でダークが指定された場合 */
+    :root[data-theme="dark"] {
+        --bg-app: #020617;
+        --bg-panel: #0f172a;
+        --bg-content: #020617;
+        --bg-card: #1e293b;
+        --bg-input: #1e293b;
+        --bg-toolbar: #0f172a;
+        --bg-modal: #1e293b;
+        --bg-modal-footer: #0f172a;
+
+        --text-main: #e2e8f0;
+        --text-head: #f8fafc;
+        --text-sub: #94a3b8;
+        
+        --border-color: #334155;
+        --border-input: #475569;
+        
+        --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Roboto Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; /* UIも少しテック風に */
-      background: #f1f5f9;
+      font-family: 'Roboto Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg-app);
       height: 100vh;
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      color: #334155;
+      color: var(--text-main);
       position: relative;
+      transition: background-color 0.3s, color 0.3s;
     }
 
     /* ユーティリティ */
@@ -39,17 +114,23 @@
 
     /* ヘッダー */
     header {
-      background: white;
+      background: var(--bg-panel);
       padding: 12px 24px;
-      border-bottom: 1px solid #e2e8f0;
+      border-bottom: 1px solid var(--border-color);
       display: flex;
       align-items: center;
       justify-content: space-between;
       flex-shrink: 0;
       z-index: 10;
     }
-    h1 { font-size: 18px; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 8px; }
-    .subtitle { font-size: 12px; color: #64748b; margin-left: 12px; }
+    h1 { font-size: 18px; font-weight: 700; color: var(--text-head); display: flex; align-items: center; gap: 8px; }
+    .subtitle { font-size: 12px; color: var(--text-sub); margin-left: 12px; }
+    
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
 
     /* メインレイアウト */
     .app-layout {
@@ -65,15 +146,15 @@
       flex-direction: column;
       overflow: hidden;
       position: relative;
-      background: #f8fafc;
+      background: var(--bg-content);
     }
 
     .toolbar {
       padding: 12px 16px;
       display: flex;
       gap: 12px;
-      background: #f8fafc;
-      border-bottom: 1px solid #e2e8f0;
+      background: var(--bg-content);
+      border-bottom: 1px solid var(--border-color);
       flex-shrink: 0;
       align-items: center;
     }
@@ -81,13 +162,13 @@
     /* 画像処理ツールバー */
     .processing-toolbar {
       padding: 8px 16px;
-      background: white;
-      border-bottom: 1px solid #e2e8f0;
+      background: var(--bg-toolbar);
+      border-bottom: 1px solid var(--border-color);
       display: flex;
       align-items: center;
       justify-content: space-between;
       flex-shrink: 0;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+      box-shadow: var(--shadow-sm);
       z-index: 5;
     }
     .proc-group {
@@ -96,7 +177,7 @@
       gap: 12px;
     }
     .proc-title {
-      font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;
+      font-size: 11px; font-weight: 700; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.05em;
       display: flex; align-items: center; gap: 4px;
       margin-right: 8px;
     }
@@ -108,8 +189,8 @@
     /* スライダーパネル（トグルで表示） */
     .slider-panel {
       padding: 16px 24px;
-      background: #f1f5f9;
-      border-bottom: 1px solid #cbd5e1;
+      background: var(--bg-app);
+      border-bottom: 1px solid var(--border-input);
       flex-shrink: 0;
       box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
     }
@@ -153,24 +234,25 @@
 
     .preview-item {
       position: relative;
-      background: white;
+      background: var(--bg-card);
       border-radius: 8px;
       overflow: hidden;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      border: 2px solid transparent;
+      box-shadow: var(--shadow-sm);
+      border: 2px solid transparent; /* デフォルトは透明 */
+      /* ダークモードで枠線が見えにくい場合の対策として薄く枠線をつけても良いが、今回は影と背景色で区別 */
       transition: all 0.2s;
       cursor: pointer;
     }
     .preview-item:hover { 
-      border-color: #3b82f6; 
-      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+      border-color: var(--color-primary); 
+      box-shadow: var(--shadow-md);
       transform: translateY(-2px);
     }
     .preview-item.dragging { opacity: 0.5; }
 
     .preview-item .img-wrapper {
       aspect-ratio: 1;
-      background: #e2e8f0;
+      background: var(--bg-app);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -187,12 +269,12 @@
     .preview-item .filename {
       padding: 8px;
       font-size: 11px;
-      color: #475569;
+      color: var(--text-main);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      background: white;
-      border-top: 1px solid #f1f5f9;
+      background: var(--bg-card);
+      border-top: 1px solid var(--border-color);
       text-align: center;
       /* ファイル名もRoboto Monoで表示 */
       font-family: 'Roboto Mono', monospace; 
@@ -208,8 +290,8 @@
     /* 右側：サイドバー */
     .sidebar {
       width: 300px; 
-      background: white;
-      border-left: 1px solid #e2e8f0;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border-color);
       display: flex;
       flex-direction: column;
       overflow-y: auto;
@@ -217,12 +299,12 @@
     }
     .sidebar-section {
       padding: 24px 20px;
-      border-bottom: 1px solid #f1f5f9;
+      border-bottom: 1px solid var(--border-color);
     }
     .sidebar-title {
       font-size: 13px;
       font-weight: 600;
-      color: #94a3b8;
+      color: var(--text-sub);
       text-transform: uppercase;
       letter-spacing: 0.05em;
       margin-bottom: 16px;
@@ -240,41 +322,52 @@
     .btn-sm {
         width: auto; padding: 6px 12px; font-size: 12px; margin-bottom: 0;
     }
+    .btn-icon {
+      background: transparent; border: 1px solid var(--border-color);
+      color: var(--text-main); width: 36px; height: 36px;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .btn-icon:hover { background: var(--bg-app); border-color: var(--text-sub); }
 
-    .btn-primary { background: #3b82f6; color: white; }
-    .btn-primary:hover { background: #2563eb; }
-    .btn-primary:disabled { background: #cbd5e1; cursor: not-allowed; }
+    .btn-primary { background: var(--color-primary); color: white; }
+    .btn-primary:hover { background: var(--color-primary-hover); }
+    .btn-primary:disabled { background: var(--border-input); cursor: not-allowed; }
     
-    .btn-secondary { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
-    .btn-secondary:hover { background: #e2e8f0; }
-    .btn-secondary.active { background: #e2e8f0; border-color: #cbd5e1; color: #1e293b; }
+    .btn-secondary { background: var(--bg-app); color: var(--text-main); border: 1px solid var(--border-color); }
+    .btn-secondary:hover { background: var(--border-color); }
+    .btn-secondary.active { background: var(--border-color); border-color: var(--text-sub); color: var(--text-head); }
     
-    .btn-danger { background: #fee2e2; color: #ef4444; border: 1px solid #fecaca; }
-    .btn-danger:hover { background: #fecaca; }
+    .btn-danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .btn-danger:hover { background: rgba(239, 68, 68, 0.2); }
 
     .btn-success { background: #10b981; color: white; }
     .btn-success:hover { background: #059669; }
-    .btn-success:disabled { background: #cbd5e1; cursor: not-allowed; }
+    .btn-success:disabled { background: var(--border-input); cursor: not-allowed; }
     
     .btn-outline-success { 
-      background: white; color: #10b981; border: 1px solid #10b981; 
+      background: var(--bg-panel); color: #10b981; border: 1px solid #10b981; 
     }
-    .btn-outline-success:hover { background: #ecfdf5; }
+    .btn-outline-success:hover { background: rgba(16, 185, 129, 0.1); }
 
     .btn-purple { background: #8b5cf6; color: white; }
     .btn-purple:hover { background: #7c3aed; }
-    .btn-purple:disabled { background: #cbd5e1; cursor: not-allowed; }
+    .btn-purple:disabled { background: var(--border-input); cursor: not-allowed; }
 
     .btn-red-outline { 
-      background: white; color: #ef4444; border: 1px solid #ef4444; 
+      background: var(--bg-panel); color: #ef4444; border: 1px solid #ef4444; 
     }
-    .btn-red-outline:hover { background: #fef2f2; }
-    .btn-red-outline:disabled { border-color:#cbd5e1; color:#cbd5e1; background:white; cursor:not-allowed; }
+    .btn-red-outline:hover { background: rgba(239, 68, 68, 0.1); }
+    .btn-red-outline:disabled { border-color:var(--border-input); color:var(--text-sub); background:var(--bg-panel); cursor:not-allowed; }
 
     /* 設定フォーム */
     .form-group { margin-bottom: 12px; }
-    .form-group label { display: block; font-size: 12px; color: #64748b; margin-bottom: 4px; }
-    .form-control { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 13px; }
+    .form-group label { display: block; font-size: 12px; color: var(--text-sub); margin-bottom: 4px; }
+    .form-control { 
+        width: 100%; padding: 8px; border-radius: 6px; 
+        border: 1px solid var(--border-input); font-size: 13px; 
+        background: var(--bg-input); color: var(--text-main);
+    }
     
     /* ラジオボタンリスト */
     .radio-list {
@@ -282,7 +375,7 @@
     }
     .radio-item {
         display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;
-        padding: 4px 0;
+        padding: 4px 0; color: var(--text-main);
     }
     .radio-item input { margin: 0; cursor: pointer; }
 
@@ -291,11 +384,11 @@
     .dual-slider { position: relative; height: 24px; margin-top: 4px; margin-bottom: 0px; }
     .slider-track {
       position: absolute; top: 50%; transform: translateY(-50%);
-      height: 6px; width: 100%; background: #e2e8f0; border-radius: 3px;
+      height: 6px; width: 100%; background: var(--border-color); border-radius: 3px;
     }
     .slider-range {
       position: absolute; top: 50%; transform: translateY(-50%);
-      height: 6px; background: #3b82f6; z-index: 1; border-radius: 3px;
+      height: 6px; background: var(--color-primary); z-index: 1; border-radius: 3px;
     }
     .range-input {
       position: absolute; pointer-events: none; -webkit-appearance: none; z-index: 2;
@@ -303,25 +396,25 @@
     }
     .range-input::-webkit-slider-thumb {
       pointer-events: auto; -webkit-appearance: none; width: 16px; height: 16px;
-      border-radius: 50%; background: white; border: 2px solid #3b82f6; cursor: ew-resize;
+      border-radius: 50%; background: white; border: 2px solid var(--color-primary); cursor: ew-resize;
     }
     .thumb {
       position: absolute; top: 50%; transform: translate(-50%, -50%);
       width: 12px; height: 12px; background: white;
-      border: 2px solid #3b82f6; border-radius: 50%; z-index: 3;
+      border: 2px solid var(--color-primary); border-radius: 50%; z-index: 3;
       pointer-events: none; box-shadow: 0 1px 3px rgba(0,0,0,0.15);
     }
     .slider-value {
-      font-size: 11px; font-weight: 500; color: #475569; font-family: monospace;
+      font-size: 11px; font-weight: 500; color: var(--text-sub); font-family: monospace;
       display: flex; justify-content: space-between; margin-bottom: 0px;
     }
 
     /* PDFプレビュー */
     .pdf-preview-box {
-      background: #e2e8f0; border-radius: 6px; padding: 12px;
+      background: var(--bg-app); border-radius: 6px; padding: 12px;
       display: flex; align-items: center; justify-content: center; min-height: 200px;
     }
-    .pdf-page-preview { background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: all 0.2s; }
+    .pdf-page-preview { background: white; box-shadow: var(--shadow-sm); transition: all 0.2s; }
     .pdf-page-preview.portrait { width: 120px; height: 170px; }
     .pdf-page-preview.landscape { width: 170px; height: 120px; }
     .pdf-grid-preview { display: grid; width: 100%; height: 100%; padding: 4px; gap: 2px; }
@@ -347,27 +440,27 @@
     /* Empty State */
     .empty-state {
       flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-      color: #94a3b8; width: 100%; height: 100%; grid-column: 1 / -1;
+      color: var(--text-sub); width: 100%; height: 100%; grid-column: 1 / -1;
     }
     .drop-message {
-      border: 2px dashed #cbd5e1; border-radius: 12px; padding: 0;
-      text-align: center; background: #f8fafc; transition: all 0.2s; cursor: pointer;
+      border: 2px dashed var(--border-input); border-radius: 12px; padding: 0;
+      text-align: center; background: var(--bg-content); transition: all 0.2s; cursor: pointer;
       width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
       min-height: 300px;
     }
-    .drop-message:hover { border-color: #3b82f6; background: #eff6ff; }
+    .drop-message:hover { border-color: var(--color-primary); background: rgba(59, 130, 246, 0.05); }
     
     /* 全画面ドラッグオーバーレイ */
     .drop-overlay {
       position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(59, 130, 246, 0.1); border: 4px solid #3b82f6;
+      background: rgba(59, 130, 246, 0.1); border: 4px solid var(--color-primary);
       z-index: 9999; display: none; pointer-events: none;
       justify-content: center; align-items: center;
     }
     .drop-overlay::after {
       content: 'ファイルをここにドロップ';
-      font-size: 24px; font-weight: bold; color: #3b82f6;
-      background: white; padding: 20px 40px; border-radius: 12px;
+      font-size: 24px; font-weight: bold; color: var(--color-primary);
+      background: var(--bg-panel); padding: 20px 40px; border-radius: 12px;
       box-shadow: 0 10px 25px rgba(59, 130, 246, 0.2);
     }
     body.drag-over .drop-overlay { display: flex; }
@@ -380,8 +473,10 @@
     }
     .modal-overlay.active { display: flex; }
     .modal-content {
-      background: white; width: 95%; max-width: 900px; max-height: 90vh;
+      background: var(--bg-modal); width: 95%; max-width: 900px; max-height: 90vh;
       border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;
+      box-shadow: var(--shadow-md);
+      color: var(--text-main);
     }
     .modal-body { 
       flex: 1; background: #0f172a; position: relative; overflow: hidden; 
@@ -408,11 +503,15 @@
     /* 手動編集パネル（モーダル内） */
     .manual-controls {
       display: flex; gap: 8px; align-items: center; padding: 8px 16px; 
-      background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 13px;
+      background: var(--bg-modal-footer); border-bottom: 1px solid var(--border-color); font-size: 13px;
       flex-wrap: wrap;
     }
     .manual-input-group { display: flex; align-items: center; gap: 4px; }
-    .manual-input { width: 60px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px; }
+    .manual-input { 
+      width: 60px; padding: 4px; border: 1px solid var(--border-input); 
+      border-radius: 4px; font-size: 12px; 
+      background: var(--bg-input); color: var(--text-main);
+    }
     .toggle-switch { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
   </style>
 </head>
@@ -423,7 +522,11 @@
 
 <header>
   <h1><i data-lucide="file-check"></i> 画像PDF結合ツール</h1>
-  <span class="subtitle">自動黒板トリミング機能付き</span>
+  <div class="header-controls">
+    <button id="themeToggleBtn" class="btn-icon" title="テーマ切り替え">
+      <i data-lucide="sun" id="themeIcon"></i>
+    </button>
+  </div>
 </header>
 
 <div class="app-layout">
@@ -440,7 +543,7 @@
       </button>
       
       <div style="flex:1"></div>
-      <span style="font-size:13px; color:#64748b;" id="countDisplay">0 枚の画像</span>
+      <span style="font-size:13px; color:var(--text-sub);" id="countDisplay">0 枚の画像</span>
     </div>
 
     <!-- 画像処理ツールバー (サイドバーから移動) -->
@@ -509,10 +612,10 @@
       <div id="previewGrid" class="preview-grid is-empty"> <!-- Default to is-empty -->
         <div class="empty-state">
           <div class="drop-message" onclick="document.getElementById('folderInput').click()">
-            <i data-lucide="image-plus" size="64" style="margin-bottom:16px; color:#cbd5e1"></i>
-            <p style="font-size: 16px; font-weight: 500; color: #64748b;">
+            <i data-lucide="image-plus" size="64" style="margin-bottom:16px; color:var(--text-sub);"></i>
+            <p style="font-size: 16px; font-weight: 500; color: var(--text-sub);">
               フォルダごとここにドロップ<br>
-              <span style="font-size: 13px; font-weight: 400; color: #94a3b8;">またはクリックして選択</span>
+              <span style="font-size: 13px; font-weight: 400; color: var(--text-sub);">またはクリックして選択</span>
             </p>
           </div>
         </div>
@@ -532,7 +635,7 @@
         <div class="radio-list">
           <label class="radio-item">
             <input type="radio" name="outputMode" value="pdf-image" checked>
-            <span>PDF (中身を画像化) <small style="color:#64748b; margin-left:4px;">推奨</small></span>
+            <span>PDF (中身を画像化) <small style="color:var(--text-sub); margin-left:4px;">推奨</small></span>
           </label>
           <label class="radio-item">
             <input type="radio" name="outputMode" value="pdf-text">
@@ -572,9 +675,9 @@
         <select id="imagesPerPage" class="form-control">
           <option value="1">1枚</option>
           <option value="2">2枚</option>
-          <option value="4" selected>4枚</option>
+          <option value="4">4枚</option>
           <option value="6">6枚</option>
-          <option value="9">9枚</option>
+          <option value="9" selected>9枚</option>
         </select>
       </div>
       <div class="form-group">
@@ -601,14 +704,14 @@
 <!-- 画像プレビュー＆操作モーダル -->
 <div class="modal-overlay" id="previewModal">
   <div class="modal-content" style="max-width: 800px; max-height: 90vh;">
-    <div style="padding:12px 16px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+    <div style="padding:12px 16px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
       <h3 style="font-size:16px; margin:0;" id="previewModalTitle">画像プレビュー</h3>
-      <button onclick="closeModal('previewModal')" style="background:none; border:none; font-size:20px; cursor:pointer;">&times;</button>
+      <button onclick="closeModal('previewModal')" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-main);">&times;</button>
     </div>
     <div class="modal-body" style="background: #0f172a; display: flex; align-items: center; justify-content: center;">
       <img id="previewModalImage" src="" alt="プレビュー" style="max-width: 100%; max-height: 60vh; object-fit: contain;">
     </div>
-    <div style="padding:16px; border-top:1px solid #e2e8f0; display:flex; justify-content: space-between; align-items: center; background: #f8fafc;">
+    <div style="padding:16px; border-top:1px solid var(--border-color); display:flex; justify-content: space-between; align-items: center; background: var(--bg-modal-footer);">
       <div>
         <button class="btn btn-danger" style="width: auto; padding: 8px 16px; font-size: 13px;" onclick="removeImageFromPreview()">
           <i data-lucide="trash-2" size="16"></i> 削除
@@ -633,15 +736,15 @@
 <!-- トリミング編集モーダル -->
 <div class="modal-overlay" id="cropModal">
   <div class="modal-content">
-    <div style="padding:16px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between;">
+    <div style="padding:16px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between;">
       <h3 style="font-size:16px; margin:0;">手動トリミング</h3>
-      <button onclick="closeModal('cropModal')" style="background:none; border:none; font-size:20px; cursor:pointer;">&times;</button>
+      <button onclick="closeModal('cropModal')" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-main);">&times;</button>
     </div>
     <div class="modal-body">
       <!-- Cropperターゲットには専用のクラスを付与 -->
       <img id="cropTarget" src="" alt="" class="cropper-target">
     </div>
-    <div style="padding:16px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:12px;">
+    <div style="padding:16px; border-top:1px solid var(--border-color); display:flex; justify-content:flex-end; gap:12px; background:var(--bg-modal-footer);">
       <button class="btn btn-secondary" style="width:auto;" onclick="closeModal('cropModal')">キャンセル</button>
       <button class="btn btn-primary" style="width:auto;" onclick="applyManualCrop()">適用</button>
     </div>
@@ -651,7 +754,7 @@
 <!-- スポイト用モーダル -->
 <div class="modal-overlay" id="pickModal">
   <div class="modal-content">
-    <div style="padding:16px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between;">
+    <div style="padding:16px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between;">
       <h3 style="font-size:16px; margin:0;">🎨 黒板の色を選択</h3>
     </div>
     <div class="modal-body">
@@ -660,7 +763,7 @@
         <img id="pickImage" src="" alt="色選択">
       </div>
     </div>
-    <div style="padding:16px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:12px;">
+    <div style="padding:16px; border-top:1px solid var(--border-color); display:flex; justify-content:flex-end; gap:12px; background:var(--bg-modal-footer);">
       <button class="btn btn-secondary" onclick="closePickModalAndRun(false)">スキップ（デフォルト設定で実行）</button>
     </div>
   </div>
@@ -669,7 +772,7 @@
 <!-- 赤枠編集用モーダル（機能拡張版） -->
 <div class="modal-overlay" id="redBoxModal">
   <div class="modal-content" style="max-width:1000px; height:90vh;">
-    <div style="padding:16px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+    <div style="padding:16px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
       <h3 style="font-size:16px; margin:0;">🔴 枠の一括追加設定（1枚目で指定）</h3>
       <button class="btn btn-secondary" style="width:auto; padding:4px 8px; font-size:12px;" onclick="clearRedBoxes()">
         <i data-lucide="trash"></i> 枠を全消去
@@ -688,7 +791,7 @@
            <input type="color" id="maskColorInput" value="#ffffff" style="border:none; width:24px; height:24px; cursor:pointer;">
         </div>
       </div>
-      <div style="width:1px; height:20px; background:#e2e8f0; margin:0 8px;"></div>
+      <div style="width:1px; height:20px; background:var(--border-color); margin:0 8px;"></div>
       <div class="manual-input-group">
         <span>X:</span><input type="number" id="rbX" class="manual-input" min="0">
         <span>Y:</span><input type="number" id="rbY" class="manual-input" min="0">
@@ -706,7 +809,7 @@
         <canvas id="redBoxCanvas" style="position:absolute; top:0; left:0;"></canvas>
       </div>
     </div>
-    <div style="padding:16px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:12px;">
+    <div style="padding:16px; border-top:1px solid var(--border-color); display:flex; justify-content:flex-end; gap:12px; background:var(--bg-modal-footer);">
       <button class="btn btn-secondary" style="width:auto;" onclick="closeModal('redBoxModal')">キャンセル</button>
       <button class="btn btn-primary" style="width:auto;" onclick="applyRedBoxesToAll()">全画像に適用</button>
     </div>
@@ -773,6 +876,10 @@
     rbW: document.getElementById('rbW'),
     rbH: document.getElementById('rbH'),
     
+    // テーマ切り替え
+    themeToggleBtn: document.getElementById('themeToggleBtn'),
+    themeIcon: document.getElementById('themeIcon'),
+
     // 設定
     pageSize: document.getElementById('pageSize'),
     orientation: document.getElementById('orientation'),
@@ -796,6 +903,64 @@
     els.generateBtn.disabled = !hasImages;
     els.resetProcBtn.disabled = !hasImages;
   }
+
+  // --- テーマ管理 ---
+  function initTheme() {
+    // 保存されたテーマを確認
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    }
+    updateThemeIcon();
+  }
+  
+  function toggleTheme() {
+    // 現在の状態を確認 (data-theme属性 or システム設定)
+    const currentAttr = document.documentElement.getAttribute('data-theme');
+    let isDark = false;
+    
+    if (currentAttr === 'dark') {
+      isDark = true;
+    } else if (currentAttr === 'light') {
+      isDark = false;
+    } else {
+      // 属性なし = システム設定に従う
+      isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+
+    // 切り替え
+    const newTheme = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    
+    updateThemeIcon();
+  }
+
+  function updateThemeIcon() {
+    const currentAttr = document.documentElement.getAttribute('data-theme');
+    let isDark = false;
+    
+    if (currentAttr === 'dark') {
+      isDark = true;
+    } else if (currentAttr === 'light') {
+      isDark = false;
+    } else {
+      isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+
+    // アイコン切り替え (Lucideアイコンの属性操作ではなく、要素の再生成/クラス操作が必要かもだが、
+    // ここではlucide.createIcons()が走った後のsvg要素の中身をいじるより、
+    // data-lucide属性を書き換えてcreateIconsしなおすのが簡単)
+    
+    const iconName = isDark ? 'sun' : 'moon';
+    els.themeIcon.setAttribute('data-lucide', iconName);
+    lucide.createIcons();
+  }
+
+  // 初期化実行
+  initTheme();
+  els.themeToggleBtn.onclick = toggleTheme;
+
 
   // スライダーのトグル機能
   els.toggleSlidersBtn.onclick = () => {
@@ -1000,8 +1165,11 @@
       grid.innerHTML = `
         <div class="empty-state">
           <div class="drop-message" onclick="document.getElementById('folderInput').click()">
-            <i data-lucide="image-plus" size="64" style="margin-bottom:16px; color:#cbd5e1"></i>
-            <p style="font-size: 16px; font-weight: 500; color: #64748b;">フォルダごとここにドロップ<br><span style="font-size: 13px; font-weight: 400; color: #94a3b8;">またはクリックして選択</span></p>
+            <i data-lucide="image-plus" size="64" style="margin-bottom:16px; color:var(--text-sub);"></i>
+            <p style="font-size: 16px; font-weight: 500; color: var(--text-sub);">
+              フォルダごとここにドロップ<br>
+              <span style="font-size: 13px; font-weight: 400; color: var(--text-sub);">またはクリックして選択</span>
+            </p>
           </div>
         </div>`;
       updateButtonStates();

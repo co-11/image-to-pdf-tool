@@ -934,7 +934,7 @@ window.undoEdit = async (i, e) => {
   renderGrid();
   updatePdfPreview();
 };
-window.clearAll = () => { images = []; redBoxes = []; renderGrid(); updatePdfPreview(); };
+window.clearAll = () => { images = []; redBoxes = []; clearCsvInput(); renderGrid(); updatePdfPreview(); };
 
 function resetAllProcessing() {
   // 状態を完全リセット
@@ -945,6 +945,7 @@ function resetAllProcessing() {
     img.isEdited = false;
   });
   redBoxes = [];
+  clearCsvInput();
   
   // 再描画
   renderGrid();
@@ -1272,7 +1273,7 @@ const DEFAULT_PROMPT = `# 役割
 ---
 
 # 出力
-CSVのみ出力。
+CSVのみコードブロックで出力。
 
 ---
 
@@ -1349,6 +1350,11 @@ function updateCsvBtnState() {
   els.csvZipBtn.disabled = !(hasCSV && hasImages);
 }
 els.csvInput.addEventListener('input', updateCsvBtnState);
+function clearCsvInput() {
+  if (els.csvInput) { els.csvInput.value = ''; }
+  if (els.csvStatus) { els.csvStatus.textContent = ''; }
+  updateCsvBtnState();
+}
 // 既存の updateButtonStates を拡張
 const _origUpdateButtonStates = updateButtonStates;
 updateButtonStates = function() {

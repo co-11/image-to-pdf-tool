@@ -1393,7 +1393,7 @@ async function generateCsvFolderZip() {
   const unmatched = [];
   // 画像名 → dataUrl マップ
   const imgMap = {};
-  images.forEach(img => { imgMap[img.name] = img.dataUrl; });
+  images.forEach(img => { imgMap[img.name] = img.originalUrl; });
   for (const row of rows) {
     const fn = row[fnKey];
     if (!fn) continue;
